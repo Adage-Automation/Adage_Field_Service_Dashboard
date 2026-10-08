@@ -15,7 +15,7 @@ It's a sibling of the **ADAGE CRM dashboard** (`github.com/Adage-Automation/adag
 **exactly the same UI/UX**: theme tokens, header and tab pills, cards, donuts, pill dropdowns, the list view
 and Excel export. When adding UI, copy the CRM's patterns; don't invent new ones.
 
-Tabs: **Report · Overview · Worksheets · Documents · Timesheets** (printable utilization report with risks & recommendations). The header's searchable **Service Engineer**
+Tabs: **Report · Overview · Worksheets · Documents · Timesheets** (the Report tab is the plain-English CSD Manager View). The header's searchable **Service Engineer**
 dropdown filters every tab.
 
 ## Commands

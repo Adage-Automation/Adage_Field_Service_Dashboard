@@ -3,6 +3,109 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-08 — Manager View: UI/UX audit fixes
+
+- Treemap tiles are real buttons: Tab to focus (visible focus ring), Enter/Space to drill, aria-label with the full numbers.
+- Small tiles always show their completion %; a 0–100% colour key and a detail strip (hovered / focused / selected tile,
+  full hours, open, late, reports) sit under the breadcrumb, so nothing depends on hover or colour alone.
+- Treemap height scales with the screen (280–420 px); tile, hint and footnote text raised to 11.5–12 px; tile secondary text
+  uses the darker secondary colour for contrast.
+- Service Type and Problem Types donuts show the top 4 + "Other".
+- Recurring problems now use the service reports' Problems Identified tags (same customer, 2+ jobs) instead of the job's
+  Problem Type, which mostly held visit types.
+- Section renamed "Recurring Problems & Next Steps"; footnote no longer points to docs/metrics.md.
+- Verified: esbuild compile check passes (dev server stopped for low memory, no browser check).
+
+## 2026-10-08 — Manager View: Service Type and Problem Types donuts, Next Steps
+
+- Visit Analysis: **Service Type** donut added beside Visit Dates (same data as the Worksheets tab).
+- Recurring Problems & Actions: **Problem Types** donut beside Recurring problems.
+- "What to do" renamed **Next Steps**.
+- Verified: esbuild compile check passes.
+
+## 2026-10-08 — Manager View: breadcrumb, Odoo link, visit dates, visit table
+
+- Treemap breadcrumb moved under the panel title, above the filters.
+- "Waiting longest" job name links to the case in Odoo (new tab).
+- Visit Dates: Missing replaced by Average visit; stats stacked in a narrower column (no white space).
+- Visit table columns: Visit Start, Visit End, Duration, Engineer, Job, Problems Identified, Resolution Applied, Spare Parts
+  Used; rows with neither a problem nor a resolution are hidden (storageKey bumped to _v2).
+- Verified: esbuild compile check passes.
+
+## 2026-10-08 — Manager View: Print/PDF and Export Excel removed from the header
+
+- The Manager View header no longer has Print / Save as PDF or Export Excel (and the report-level export code and print CSS
+  are gone). The drill-down and Visit Analysis tables keep their own Excel export.
+- Verified: esbuild compile check passes.
+
+## 2026-10-08 — Manager View: summary, headline numbers and Needs attention removed
+
+- Removed the summary bullets, the 4 headline cards (open, late, stuck, engineers with no reports) and the "Needs
+  attention this week" list. The last section is now **Recurring Problems & Actions** (recurring problems + What to do).
+- Excel: Summary sheet now holds scope, date and actions; the Needs Attention sheet is gone.
+- Verified: esbuild compile check passes (dev server was stopped for low memory, so no browser check this time).
+
+## 2026-10-08 — Manager View restructured: Regions & Engineers, Trends, Visit Analysis
+
+- Page order: **Regions & Engineers** (heading + treemap) → **Monthly Trend · Cases Created** and **How long open jobs have
+  been waiting** (the Overview backlog-aging panel, renamed) → **Visit Analysis** → Summary & Actions.
+- Treemap tiles now also show hours worked, open (late) jobs and service reports; the engineer jobs table gains Hours.
+- Visit Analysis: Start → End Duration, Visit Dates (shortest / longest / missing / average) and a table of problems
+  identified, resolution applied, spare parts used (future scope), visit start/end and duration.
+- `WorksheetsTab.jsx` now exports `DURATION_BUCKETS` and `TagList` so the report reuses them.
+- Verified: NORTH/DELHI → ADESH KUMAR tile "2 of 6 completed · 48 h worked · 4 open (3 late) · 2 service reports";
+  export downloads; no console errors.
+
+## 2026-10-08 — Manager View: treemap first, with filters; heat map and region/engineer lists removed
+
+- The region → engineer treemap is now at the top of the Manager View, with filters for Year and Month (Created On),
+  Customer and Problem Type (chips + Clear all; "N jobs shown").
+- Removed: Engineer ranking heat map, "Engineers needing attention" and "Regions · report rate" (and the region action /
+  Engineer Ranking export sheet).
+- Verified: 126 jobs → 22 with Year 2026 + Aug; export downloads; no console errors.
+
+## 2026-10-08 — Manager View: region → engineer treemap
+
+- New interactive **treemap** (squarified, no new library): regions sized by jobs and coloured by % completed; click a
+  region for its engineers, click an engineer to list their jobs in that region; breadcrumb to go back.
+- The engineer-jobs table is shared by the heat map and the treemap.
+- Verified: NORTH/DELHI → ADESH KUMAR lists 6 jobs (2 completed); no console errors.
+
+## 2026-10-08 — Manager View: engineer heat map with drill-down
+
+- Engineer ranking is now a **heat map**: one tile per engineer (completed / assigned, %, open, late), coloured red → green
+  by completion rate. Clicking a tile opens that engineer's jobs in a table below (status, created on, days open,
+  service report; rows open Odoo; Excel export; ✕ Close).
+- Verified: clicking ADESH KUMAR lists 11 jobs (5 completed, 6 open); no console errors.
+
+## 2026-10-08 — Manager View: engineer ranking as a bar chart
+
+- Engineer ranking is now a full-width bar chart of **every** engineer: assigned (grey) vs completed (green), most
+  completed first, names written vertically. Regions moved to its own full-width panel below.
+- Verified: no console errors, export downloads.
+
+## 2026-10-08 — Manager View: engineer ranking, paperwork items removed
+
+- Removed the completed-job paperwork items: "Completed with a service report" and "Ready to close & invoice" KPIs,
+  "completed but no service report" attention rows, and the matching summary sentence and action.
+- Added **Engineer ranking · completion rate** (engineers with 3+ jobs: completed ÷ assigned, open, late, avg days to
+  complete) next to the region panel, plus an "Engineer Ranking" Excel sheet.
+- "Open jobs by age" renamed "How long open jobs have been waiting".
+- Verified: no console errors, export downloads; top-ranked engineer 3 of 3 completed (100%).
+
+## 2026-10-08 — Report tab rebuilt as the CSD Manager View
+
+- The Report tab is now a minimalist **Manager View** in plain English: 6 status-coloured numbers (open jobs, running
+  late, stuck, completed with a service report, ready to close & invoice, engineers with no reports), a "Needs
+  attention this week" list (max 5 jobs, click opens Odoo), open jobs by age, engineers needing attention, recurring
+  problems (same customer + problem), report rate by region, and up to 3 "What to do" actions.
+- Removed from the report: hours, overtime, special dates, spare parts, service types, visit duration, module
+  adoption, Odoo-login table and the 12-row risk table. Task Status is no longer used (it isn't maintained in Odoo).
+- Excel export slimmed to Summary, Needs Attention, Engineers and Recurring Problems.
+- New task field read: `date_last_stage_update` (Odoo has no due dates on any FSM case).
+- Verified (live data): 96 open, 84 older than 60 days, 96 stuck, 73% (22/30) completed with a report, 70% (21/30)
+  ready to close, 5 engineers with no reports; other tabs unchanged; no console errors; export downloads.
+
 ## 2026-10-08 — Over-engineering audit cleanup (round 2)
 
 - Deleted unused `StatusPill`, `LoggingLabel`, `TASK_STATUS_COLORS` and `c.loggingLabel`.

@@ -30,15 +30,25 @@ MoMs and timesheets follow their case. A child row with no case matches on its o
 | Case Status | cases per Odoo stage (the Stage column): split bar plus a bar per stage |
 | Doc Check column | see the Documents flags below |
 
-## Report tab (Utilization Report)
+## Report tab (Manager View)
 
-| Item | Definition |
-|---|---|
-| Engineers active | engineers (case Service Engineers) with ≥ 1 logged case / all assigned engineers |
-| Module adoption | % of cases with: worksheet, MoM, timesheet, files (chatter attachments or Documents section) |
-| Who entered the data | `create_uid` of worksheets, timesheets and MoMs (a shared login is flagged) |
-| Completed · No Evidence | Completed stage AND 0 attachments AND 0 Documents-section files AND no MoM AND no timesheet |
-| Risk rules | Adoption < 70% (High if < 50%); any Completed-No-Evidence (High); completed without worksheet (High if ≥ 5); open unlogged > 60 days (High if ≥ 10); engineers with ≥ 3 cases and 0 logged (High); shared login ≥ 50% of entries (Medium); worksheet without MoM (Medium); MoM without worksheet (Low); open + "Not Started" > 30 days (Medium); unlinked timesheets (Medium); problems without resolution (Medium); missing visit dates (Low); one engineer > 30% of hours (Low) |
+Plain-English, one-screen view for the CSD manager. Cancelled jobs are excluded. "Completed" = stage name contains
+Completed/Done. Odoo has **no due dates** on this instance (`date_deadline`, `date_end`, `planned_date_begin` are empty),
+so lateness uses job age and days since the last stage change (`date_last_stage_update`). Colour = status only.
+
+| Item | Definition | Green / Amber / Red |
+|---|---|---|
+$1
+| Regions → engineers treemap | Tiles are keyboard buttons (Tab, Enter); a strip under the breadcrumb shows the hovered/focused tile in full plus a 0–100% colour key; small tiles always show their %. Section heading "Regions & Engineers". Each tile also shows hours worked (timesheet Total Working Hours on its jobs), open jobs (late = open > 60 d) and service reports. **top of the page.** Filters (treemap only): Year and Month of Created On, Customer, Problem Type; "N jobs shown" counts the filtered jobs. level 1: one tile per region, size = jobs, colour = % completed (red 0% → green 100%), note = engineers in the region. Click a region → level 2: its engineers, size = their jobs in that region (a job with 2 engineers counts for each; jobs without an engineer show as "No engineer"). Click an engineer → their jobs in that region (job, customer, status, created on, days open, service report; rows open Odoo; Excel export). Breadcrumb returns to higher levels | |
+| Monthly Trend · Cases Created | jobs per month of Created On (last 12 months with data), split into with / without a service report | |
+| How long open jobs have been waiting | open jobs **with no service report**, by days since created: 0–30 / 31–60 / 61–90 / 90+; note = the job waiting longest (links to the case in Odoo) | |
+| Visit Analysis | Start → End Duration buckets (1 / 2–3 / 4–7 / 8+ days); Visit Dates: shortest, average, longest visit (reports missing a date are left out); Service Type donut (service reports per Service Type; top 4 + Other); table of service reports that have a problem **or** a resolution recorded, columns: visit start, visit end, duration (end − start + 1), engineer, job, problems identified, resolution applied, spare parts used | |
+| Recurring problems | same customer + same **Problems Identified tag** (service reports) on 2+ jobs, top 5; amber 2 jobs, red ≥ 3 | |
+| Problem Types (donut) | jobs per case Problem Type ("Not set" when empty; top 4 + Other), beside Recurring problems | |
+| Next Steps | up to 3 plain-English actions, most urgent first, each with a number | |
+
+Removed from the report (still available in the other tabs): hours, overtime, special dates, spare parts, service
+types, visit duration, module adoption, MoM counts and "who entered the data" (unreliable: shared Odoo login).
 
 ## Worksheets
 

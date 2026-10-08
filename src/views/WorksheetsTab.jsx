@@ -5,7 +5,7 @@ import { tally } from "../lib/derive";
 import { InsightsCard, KpiCard, KpiRow, BarList, InteractiveDonut, DataTable, ChartRow, Stack, Panel, SplitBar, MiniStat, MultiSelect, FilterChip, TitleCell, Txt, Pill, Dash, fmtNum, avg } from "../components/ui";
 import { caseCustomer, engineerNames, EngineerPills, openCase, odooLinkCell, fmtDay, isoDay, SectionLabel } from "./shared";
 
-const DURATION_BUCKETS = [
+export const DURATION_BUCKETS = [
   { key: "1 day", test: (d) => d === 1, color: "#059669" },
   { key: "2–3 days", test: (d) => d >= 2 && d <= 3, color: "#02818A" },
   { key: "4–7 days", test: (d) => d >= 4 && d <= 7, color: "#D97706" },
@@ -13,7 +13,7 @@ const DURATION_BUCKETS = [
 ];
 
 
-function TagList({ items, color }) {
+export function TagList({ items, color }) {
   if (!items.length) return <Dash />;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>

@@ -5,7 +5,7 @@ stack as the [ADAGE CRM dashboard](https://github.com/Adage-Automation/adage-crm
 inline theme tokens, a server-side Odoo proxy, and Microsoft sign-in.
 
 Tabs:
-- **Report**: printable utilization report with risks and recommendations (Print/PDF, Excel)
+- **Report**: one-screen Manager View for the CSD manager: 6 status-coloured numbers, jobs needing attention, recurring problems, regions and what to do
 - **Overview**: totals, logged vs not-logged cases, case status by stage, assignments per engineer, worksheet-logging ranking, and the full case list
 - **Worksheets**: visit duration (Time Taken in days), service type, and a Problems & Resolutions table with problems identified, resolution applied and spare parts used
 - **Documents**: key insights on flagged records and why they're flagged: a worksheet with no MoM (AMC / Commissioning), or documents with no worksheet. Cases with files in their Attachments field are never flagged
@@ -51,6 +51,7 @@ Without these IDs, a production build shows a "sign-in isn't configured" page.
 
 ## Project docs
 
+- `CONTEXT.md`: what the project is and does, in plain language
 - `CLAUDE.md`: architecture, conventions and gotchas (loaded automatically by Claude Code)
 - `docs/odoo-data-model.md`: Odoo models and fields, and how records link together
 - `docs/metrics.md`: how every KPI, flag and column is calculated

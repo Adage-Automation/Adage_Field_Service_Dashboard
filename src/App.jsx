@@ -40,7 +40,7 @@ const TASK_FIELDS = [
   "name", "partner_id", "x_studio_end_user", "x_studio_regions", "x_studio_call_type", "x_studio_problem_type",
   "x_studio_service_engineers", "stage_id", "x_studio_task_status", "x_studio_created_on",
   "create_date", "x_studio_control_no", "x_studio_scrn",
-  "project_id", "message_attachment_count", "attachment_ids", // both non-stored: readable, not filterable
+  "project_id", "date_last_stage_update", "message_attachment_count", "attachment_ids", // last two non-stored: readable, not filterable
 ];
 const WORKSHEET_MODEL = "x_project_task_worksheet_template_4"; // "Service Call Worksheet"
 const WORKSHEET_FIELDS = [

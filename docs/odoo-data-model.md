@@ -38,6 +38,7 @@ Domain: `[["is_fsm", "=", true]]`. Fields read:
 | `x_studio_task_status` | selection | Task Status |
 | `x_studio_created_on` (fallback `create_date`) | date | Created On |
 | `x_studio_control_no`, `x_studio_scrn` | char / selection | identifiers, search |
+| `date_last_stage_update` | datetime | Manager View "stuck jobs" (days since the stage last changed) |
 
 Not used: `user_ids` and `x_studio_assigned_persons` (empty on this instance), and `worksheet_count` /
 `x_studio_worksheets_count` (non-stored, so they can't be filtered on).
