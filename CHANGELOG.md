@@ -3,6 +3,23 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-08 — Visit Analysis by Engineer: spare parts listed by name
+
+- Spare Parts Used now lists the parts themselves (distinct, as tags) instead of "N of visits"; sorts by how many
+  different parts, exports as a comma-separated list. `engineerVisitStats` returns `spareParts` (sorted names).
+
+## 2026-10-08 — Visit Analysis by Engineer: Spare Parts Used replaces Resolution Recorded
+
+- Columns now read … Avg Hours, Problems Identified, **Spare Parts Used** (visits with ≥ 1 spare part, "N of visits",
+  red → green), Main Service Type. Resolution Recorded is removed (resolutions are still listed in Problems & Resolutions).
+- `engineerVisitStats`: `withSpares` / `spareRate` replace `resolved` / `resolutionRate`. storageKey bumped to _v2.
+- Verified: live data in headless Chrome, no console errors.
+
+## 2026-10-08 — Visit Analysis by Engineer: counts instead of percentages
+
+- Resolution Recorded and Problems Identified now show the number of visits ("2 of 3") instead of a %; they sort and
+  export by the count. The badge keeps the red → green colour by share of visits.
+
 ## 2026-10-08 — Manager View: Visit Analysis by Engineer swaps Shortest/Longest for Avg Hours
 
 - Removed the Shortest/Longest visit-days columns. Added Avg Hours: Total Working Hours summed across the

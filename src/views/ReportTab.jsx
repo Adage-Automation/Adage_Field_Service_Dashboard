@@ -62,8 +62,8 @@ function squarify(items, x = 0, y = 0, w = TM_W, h = TM_H) {
 }
 
 // % badge on the same red (0%) → green (100%) scale as the treemap.
-function HeatPct({ value }) {
-  return <span style={{ display: "inline-block", minWidth: 38, textAlign: "center", fontSize: 11.5, fontWeight: 700, padding: "1px 6px", borderRadius: 999, background: heat(value, 90), color: heat(value, 28) }}>{value}%</span>;
+function HeatPct({ value, children }) {
+  return <span style={{ display: "inline-block", minWidth: 38, textAlign: "center", fontSize: 11.5, fontWeight: 700, padding: "1px 6px", borderRadius: 999, background: heat(value, 90), color: heat(value, 28) }}>{children ?? `${value}%`}</span>;
 }
 
 const tileLabel = (t) => `${t.label}: ${t.completed} of ${t.value} completed (${t.rate}%)${t.hint ? ` · ${t.hint}` : ""}`;
@@ -361,10 +361,10 @@ export function ReportTab({ model, userMap }) {
     { key: "avgHours", label: "Avg Hours", weight: 8,
       info: "Average Total Working Hours per timesheet entry, from the engineer's own timesheets (not the visit dates): sum of Total Working Hours across all of their timesheets, divided by how many timesheet entries they have. Engineer attribution: the timesheet's Submitted By, or the job's Service Engineers when that's blank. Blank when the engineer has no timesheets.",
       render: (e) => dayCell(e.avgHours), sortValue: (e) => e.avgHours ?? -1, exportValue: (e) => (e.avgHours === null ? "" : Number(e.avgHours.toFixed(1))) },
-    { key: "resolution", label: "Resolution Recorded", weight: 9, info: "Share of the engineer's visits with Resolution Applied filled in. Red (0%) → green (100%).",
-      render: (e) => <HeatPct value={e.resolutionRate} />, sortValue: (e) => e.resolutionRate, exportValue: (e) => `${e.resolutionRate}%` },
-    { key: "problems", label: "Problems Identified", weight: 9, info: "Share of the engineer's visits with at least one Problems Identified tag. Red (0%) → green (100%).",
-      render: (e) => <HeatPct value={e.problemRate} />, sortValue: (e) => e.problemRate, exportValue: (e) => `${e.problemRate}%` },
+    { key: "problems", label: "Problems Identified", weight: 9, info: "Number of the engineer's visits with at least one Problems Identified tag, out of their visits. Colour: red (none) → green (all).",
+      render: (e) => <HeatPct value={e.problemRate}>{e.withProblems} of {e.visits}</HeatPct>, sortValue: (e) => e.withProblems, exportValue: (e) => e.withProblems },
+    { key: "spares", label: "Spare Parts Used", weight: 16, exportWidth: 50, info: "The spare parts recorded on the engineer's service reports (Spare Parts Used), each listed once.",
+      render: (e) => <TagList items={e.spareParts} color="#7C3AED" />, sortValue: (e) => e.spareParts.length, exportValue: (e) => e.spareParts.join(", ") },
     { key: "type", label: "Main Service Type", weight: 11, exportWidth: 20, info: "The engineer's most common Service Type across their visits.",
       render: (e) => <Pill color={colorFor(e.topServiceType, SERVICE_TYPE_COLORS)}>{e.topServiceType}</Pill>, sortValue: (e) => e.topServiceType, exportValue: (e) => e.topServiceType },
     { key: "odoo", label: "Odoo Link", exportOnly: true, exportWidth: 14, exportValue: (e) => ({ text: "Open in Odoo", hyperlink: odooEmployeeUrl(e.id) }) },
@@ -492,7 +492,7 @@ export function ReportTab({ model, userMap }) {
           title="Visit Analysis by Engineer · slowest visits first"
           columns={visitEngineerColumns}
           rows={visitByEngineer}
-          storageKey="adage_fsm_report_visit_by_engineer_cols_v1"
+          storageKey="adage_fsm_report_visit_by_engineer_cols_v2"
           defaultSort={{ key: "avg", dir: "desc" }}
           searchText={(e) => e.name}
           searchPlaceholder="Search engineer..."
