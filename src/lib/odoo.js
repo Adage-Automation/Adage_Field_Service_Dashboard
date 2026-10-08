@@ -39,3 +39,6 @@ export const fetchOdoo = async (model, method, args = [], kwargs = {}) => {
 
 // "Open in Odoo" link for a field service task (project.task record).
 export const odooTaskUrl = (id) => `${ODOO_BASE_URL}/odoo/project.task/${id}`;
+
+// "Open in Odoo" link for a service engineer (hr.employee record).
+export const odooEmployeeUrl = (id) => `${ODOO_BASE_URL}/odoo/hr.employee/${id}`;

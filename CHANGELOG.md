@@ -3,6 +3,95 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-08 — Manager View: visit length, visit dates and recurring problems panels removed
+
+- Removed "How long each visit took" (and its visit list), "Visit Dates" and the "Recurring problems" panel. The recurring
+  pair still feeds the Next Steps action.
+- The Service Type donut moved beside Problem Types; the section is now "Problem Types, Service Types & Next Steps".
+- Visit Analysis keeps Visit Analysis by Engineer and Problems & Resolutions.
+
+## 2026-10-08 — Manager View: clearer "never reported" next step
+
+- Reworded: "5 engineers have 3 or more jobs but have never submitted a service report (27 jobs between them)…", so the
+  number on the button no longer looks unexplained.
+- Its **Take Action → (N engineers)** now opens a table of those engineers (assigned, open, completed, report rate,
+  last report…); clicking one lists their assigned jobs. Other actions still open their job list directly.
+
+## 2026-10-08 — Manager View: Next Steps "Take Action" drill-downs
+
+- Each Next Steps bullet has a **Take Action → (N)** button that opens the exact jobs behind it below the card, using the
+  same job table (sort, search, Excel export `field-service-action-<id>`, rows open Odoo, ✕ Close). One list open at a time.
+- `r.actions` items are now `{ id, text, rows }`; `recurring` keeps its case-id Set. Thresholds and wording unchanged.
+- Verified: esbuild compile check passes.
+
+## 2026-10-08 — Manager View: Visit Analysis by Engineer moved up, rows open assigned jobs
+
+- **Visit Analysis by Engineer** now sits above Problems & Resolutions.
+- Clicking an engineer there lists the jobs assigned to them (Service Engineers field) right below, with the same job
+  table as the other drill-downs (rows open the case in Odoo; ✕ Close or click the row again). The employee Odoo link
+  stays in the Excel export.
+
+## 2026-10-08 — Manager View: engineer ranking rows open the engineer's jobs
+
+- Clicking an engineer in **Engineer Ranking & Workload** now lists their jobs right below the table (status, created on,
+  days open, hours, service report; rows open the case in Odoo; ✕ Close or click the row again). The selected row is
+  highlighted. Previously the row opened the employee record in Odoo; that link stays in the Excel export.
+
+## 2026-10-08 — Manager View: Problems & Resolutions table trimmed
+
+- "Problems, Resolutions & Visit Duration" renamed **Problems & Resolutions**; Visit Start, Visit End and Duration columns
+  removed (visit length lives in "How long each visit took" and Visit Analysis by Engineer). storageKey bumped to _v3;
+  export renamed field-service-problems-resolutions.
+
+## 2026-10-08 — Manager View: Visit Analysis by Engineer
+
+- New **Visit Analysis by Engineer** table in Visit Analysis: visits, avg / shortest / longest visit days, Resolution
+  Recorded %, Problems Identified % (both heat-coloured red → green), main Service Type. Default sort slowest average visit
+  first; every column sortable; search, Excel export, row opens the employee in Odoo.
+- `derive.js`: new `engineerVisitStats(worksheets, userMap)` and `wsEngineerIds(w)` (the report's worksheet → engineer
+  rule now lives there). `HeatPct` badge shared by both engineer tables.
+- Verified: esbuild compile check passes; engineerVisitStats checked against a small hand-made sample.
+
+## 2026-10-08 — Manager View: Engineer Ranking & Workload table
+
+- New **Engineer Ranking & Workload** table after the treemap: Assigned, Open, Completed, Reports · Rate (heat-coloured
+  bar + %), Backlog, Flagged, Hours, Last Report (red when never / > 30 days). Default sort worst report rate first; every
+  column sortable; search, Excel export (with an Odoo employee link), row opens the employee in Odoo.
+- Reuses the existing `engineerStats(r.live, userMap)` call (now returned from the report memo).
+- Next Steps no longer lists the never-reported engineers by name; it points to the table.
+- `src/lib/odoo.js`: added `odooEmployeeUrl(id)`.
+- Verified: esbuild compile check passes.
+
+## 2026-10-08 — Manager View: interactive monthly trend
+
+- Monthly Trend now shows **two bars per month** (with worksheet / without worksheet) with the count on each bar, a hover /
+  keyboard read-out ("May '26: 32 jobs · 10 with · 22 without (31% with a worksheet)") and animated bar heights.
+- Clicking a month lists that month's jobs below (status, days open, service report; rows open Odoo; ✕ Close).
+- Verified: esbuild compile check passes.
+
+## 2026-10-08 — Manager View: visit-length band opens its own table
+
+- Clicking a band in **How long each visit took** now opens a separate table of every visit in that band (visit start / end,
+  duration, engineer, job, service type; rows open Odoo; ✕ Close), like the waiting-jobs list. The Problems, Resolutions &
+  Visit Duration table is no longer filtered by the band.
+- Verified: esbuild compile check passes.
+
+## 2026-10-08 — Manager View: clickable waiting bands, "How long each visit took"
+
+- How long open jobs have been waiting: click an age band (e.g. 90+ days) to list those jobs below the chart; rows open
+  the case in Odoo; ✕ Close or click the band again to hide.
+- "Start → End Duration" renamed **How long each visit took** with a plain-English tooltip; clicking a band filters the
+  Problems, Resolutions & Visit Duration table to visits of that length ("show all" clears it).
+- Verified: esbuild compile check passes.
+
+## 2026-10-08 — Manager View: header removed, completion pointer
+
+- Removed the Manager View header card (title, date, scope); the page now starts with the Regions & Engineers treemap.
+- The treemap's 0–100% key is now a completion scale with a moving pointer: it shows the hovered / focused / selected
+  region or engineer's completion %, or the whole level (all regions, or the open region) when nothing is pointed at.
+  Exposed to screen readers as a meter.
+- Verified: esbuild compile check passes.
+
 ## 2026-10-08 — Manager View: UI/UX audit fixes
 
 - Treemap tiles are real buttons: Tab to focus (visible focus ring), Enter/Space to drill, aria-label with the full numbers.

@@ -213,6 +213,37 @@ export function engineerStats(cases, userMap) {
   return Object.values(m).map((p) => ({ ...p, rate: p.assigned ? p.logged / p.assigned : 0, lastLoggedDays: daysAgo(p.lastLogged) }));
 }
 
+/** Engineers on a worksheet: its Assigned Service Engineer, else the case's Service Engineers. */
+export const wsEngineerIds = (w) => (w.engineerIds.length ? w.engineerIds : w.case?.engineerIds || []);
+
+/**
+ * Per-engineer visit stats over the given worksheets: visits, avg / min / max visit days (worksheets missing a
+ * date are left out of the day stats), resolution-recorded rate, problems-identified rate and most common service type.
+ */
+export function engineerVisitStats(worksheets, userMap) {
+  const m = {};
+  worksheets.forEach((w) => wsEngineerIds(w).forEach((id) => {
+    if (!m[id]) m[id] = { id, name: userMap[id] || `Employee #${id}`, visits: 0, days: [], resolved: 0, withProblems: 0, types: {} };
+    const p = m[id];
+    p.visits += 1;
+    if (w.visitDays !== null) p.days.push(w.visitDays);
+    if ((w.x_studio_resolution_applied || "").trim()) p.resolved += 1;
+    if (w.problems.length) p.withProblems += 1;
+    const t = w.x_studio_service_type || "Not set";
+    p.types[t] = (p.types[t] || 0) + 1;
+  }));
+  return Object.values(m).map(({ days, types, ...p }) => ({
+    ...p,
+    measured: days.length,
+    avgDays: days.length ? days.reduce((a, b) => a + b, 0) / days.length : null,
+    minDays: days.length ? Math.min(...days) : null,
+    maxDays: days.length ? Math.max(...days) : null,
+    resolutionRate: p.visits ? Math.round((p.resolved / p.visits) * 100) : 0,
+    problemRate: p.visits ? Math.round((p.withProblems / p.visits) * 100) : 0,
+    topServiceType: Object.entries(types).sort((a, b) => b[1] - a[1])[0]?.[0] || "Not set",
+  }));
+}
+
 /** Days between an ISO date and today (null when missing). */
 const daysAgo = (iso) => {
   const d = dayNum(iso);
