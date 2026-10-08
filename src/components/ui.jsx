@@ -25,7 +25,7 @@ export function CardTitle({ children, color = T.textMuted, right = null, info = 
 }
 
 // ─── "?" info tooltip (same as InteractiveDonut's info button) ─────────────────
-function InfoDot({ text }) {
+export function InfoDot({ text }) {
   const [show, setShow] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -52,12 +52,27 @@ function InfoDot({ text }) {
       </button>
       {show && (
         <div role="tooltip" style={{
-          position: "absolute", top: "calc(100% + 8px)", left: 0, width: 260, maxWidth: "min(260px, calc(100vw - 40px))",
-          background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
-          padding: "10px 12px", zIndex: 30, fontSize: 11, fontWeight: 400, textTransform: "none", letterSpacing: "normal",
-          color: T.textSecondary, lineHeight: 1.45,
+          position: "absolute", top: "calc(100% + 10px)", left: 0, width: 280, maxWidth: "min(280px, calc(100vw - 40px))",
+          background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: "0 14px 32px rgba(15, 23, 42, 0.18)",
+          zIndex: 30, overflow: "hidden", fontWeight: 400, textTransform: "none", letterSpacing: "normal",
         }}>
-          {text}
+          <div style={{ height: 3, background: `linear-gradient(90deg, ${T.accent}, ${T.accentBdr})` }} />
+          <div style={{ padding: "11px 13px", display: "flex", flexDirection: "column", gap: Array.isArray(text) ? 9 : 0 }}>
+            {Array.isArray(text)
+              ? text.map((item, i) => (
+                  <div key={i} style={{ paddingTop: i ? 9 : 0, borderTop: i ? `1px solid ${T.border}` : "none" }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, color: T.accent, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>{item.label}</div>
+                    {item.formula && (
+                      <div style={{
+                        fontFamily: "ui-monospace, 'SF Mono', Consolas, monospace", fontSize: 11.5, fontWeight: 700, color: T.accent,
+                        background: T.accentBg, border: `1px solid ${T.accentBdr}`, borderRadius: 6, padding: "5px 8px", margin: "2px 0 5px",
+                      }}>{item.formula}</div>
+                    )}
+                    <div style={{ fontSize: 11.5, color: T.textSecondary, lineHeight: 1.5 }}>{item.text}</div>
+                  </div>
+                ))
+              : <div style={{ fontSize: 11, color: T.textSecondary, lineHeight: 1.5 }}>{text}</div>}
+          </div>
         </div>
       )}
     </div>
@@ -571,7 +586,10 @@ export function SearchSelect({ value, onChange, options, allLabel = "All", searc
 // grow=false keeps the card at its natural height (use inside a <Stack> next to a growing Panel)
 export function InteractiveDonut({ title, infoText = null, segments, centerLabel, onSegmentClick, activeKey, legendMaxHeight = null, unit = "records", formatValue = (v) => fmtNum(v), grow = true }) {
   const [hoveredKey, setHoveredKey] = useState(null);
-  const total = segments.reduce((s, x) => s + (x.value || 0), 0);
+  const [drilledKey, setDrilledKey] = useState(null);
+  const drilled = drilledKey ? segments.find((s) => s.key === drilledKey) : null;
+  const activeSegments = drilled ? drilled.others : segments;
+  const total = activeSegments.reduce((s, x) => s + (x.value || 0), 0);
 
   const size = 120, cx = size / 2, cy = size / 2;
   const R_BASE = 44, R_HOVER = 48;
@@ -580,7 +598,7 @@ export function InteractiveDonut({ title, infoText = null, segments, centerLabel
   const circ_hover = 2 * Math.PI * R_HOVER;
 
   let cumDashBase = 0, cumDashHover = 0;
-  const segs = segments.filter((s) => s.value > 0).map(seg => {
+  const segs = activeSegments.filter((s) => s.value > 0).map(seg => {
     const dashBase = (seg.value / total) * circ_base;
     const dashHover = (seg.value / total) * circ_hover;
     const s = { ...seg, dashBase, dashHover, offsetBase: cumDashBase, offsetHover: cumDashHover };
@@ -595,6 +613,12 @@ export function InteractiveDonut({ title, infoText = null, segments, centerLabel
   return (
     <div className="card" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", ...(grow ? { height: "100%" } : { flex: "0 0 auto" }) }}>
       <CardTitle info={infoText}>{title}</CardTitle>
+      {drilled && (
+        <button type="button" onClick={() => setDrilledKey(null)} style={{
+          display: "inline-flex", alignItems: "center", gap: 4, alignSelf: "flex-start", marginBottom: 8,
+          border: "none", background: "none", padding: 0, color: T.accent, fontWeight: 600, fontSize: 11.5, fontFamily: "inherit", cursor: "pointer",
+        }}>← Back · {drilled.displayKey || drilled.key}</button>
+      )}
       {segs.length === 0 ? (
         <div style={{ color: T.textMuted, fontSize: 12, textAlign: "center", padding: "18px 0", flex: 1 }}>No data</div>
       ) : (
@@ -621,10 +645,10 @@ export function InteractiveDonut({ title, infoText = null, segments, centerLabel
                     />
                     <circle cx={cx} cy={cy} r={R_HOVER} fill="none" stroke="transparent" strokeWidth={SW_HOVER + 8}
                       strokeDasharray={`${seg.dashHover} ${circ_hover - seg.dashHover}`} strokeDashoffset={-seg.offsetHover}
-                      strokeLinecap="butt" cursor={onSegmentClick ? "pointer" : "default"}
+                      strokeLinecap="butt" cursor={(onSegmentClick || (seg.others && seg.others.length > 0)) ? "pointer" : "default"}
                       onMouseEnter={() => setHoveredKey(seg.key)}
                       onMouseLeave={() => setHoveredKey(null)}
-                      onClick={() => onSegmentClick && onSegmentClick(seg.key)}
+                      onClick={() => { if (seg.others && seg.others.length > 0) { setHoveredKey(null); setDrilledKey(seg.key); } else if (onSegmentClick) onSegmentClick(seg.key); }}
                     />
                   </g>
                 );
@@ -648,22 +672,24 @@ export function InteractiveDonut({ title, infoText = null, segments, centerLabel
           <div style={{ flex: 1, minWidth: 0, maxHeight: legendMaxHeight || undefined, overflowY: legendMaxHeight ? "auto" : "visible", paddingRight: legendMaxHeight ? 4 : 0 }}>
             {segs.map(seg => {
               const isActive = activeKey === seg.key;
+              const hasBreakdown = seg.others && seg.others.length > 0;
               return (
                 <div key={seg.key}
-                  onClick={() => onSegmentClick && onSegmentClick(seg.key)}
+                  onClick={() => { if (hasBreakdown) { setHoveredKey(null); setDrilledKey(seg.key); } else if (onSegmentClick) onSegmentClick(seg.key); }}
                   onMouseEnter={() => setHoveredKey(seg.key)}
                   onMouseLeave={() => setHoveredKey(null)}
                   style={{
                     display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 7,
-                    cursor: onSegmentClick ? "pointer" : "default",
+                    cursor: (onSegmentClick || hasBreakdown) ? "pointer" : "default",
                     opacity: hoveredKey && hoveredKey !== seg.key ? 0.4 : 1, transition: "opacity 0.15s",
                     borderLeft: `3px solid ${isActive ? seg.color : "transparent"}`,
                     background: isActive ? `${seg.color}12` : "transparent", borderRadius: 4, paddingLeft: 5,
                   }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: seg.color, flexShrink: 0, marginTop: 3 }} />
                   <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                    <span title={seg.displayKey || seg.key} style={{ fontSize: 11, color: T.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span title={seg.displayKey || seg.key} style={{ fontSize: 11, color: T.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>
                       {seg.displayKey || seg.key}
+                      {hasBreakdown && <span aria-hidden="true" style={{ fontSize: 9, color: T.textMuted }}>▸</span>}
                     </span>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                       <span style={{ fontSize: 10, color: T.textMuted, whiteSpace: "nowrap" }}>{formatValue(seg.value)} {unit}</span>

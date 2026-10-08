@@ -1,7 +1,7 @@
 import { T } from "../constants/theme";
 import { CHART_COLORS, STAGE_PILL } from "../constants/colors";
 import { odooTaskUrl } from "../lib/odoo";
-import { Pill, Dash, TitleCell } from "../components/ui";
+import { Pill, Dash, TitleCell, InfoDot } from "../components/ui";
 
 // ─── Case-level helpers shared by every tab ──────────────────────────────────
 
@@ -106,10 +106,13 @@ export const openCase = (c) => c?.id && window.open(odooTaskUrl(c.id), "_blank",
 export const odooLinkCell = (id) => (id ? { text: "Open in Odoo", hyperlink: odooTaskUrl(id) } : "");
 
 // Section heading used between dashboard blocks
-export function SectionLabel({ children, right = null }) {
+export function SectionLabel({ children, right = null, info = null }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "18px 0 10px" }}>
-      <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.8px", textTransform: "uppercase", fontWeight: 700 }}>{children}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ fontSize: 11, color: T.textMuted, letterSpacing: "0.8px", textTransform: "uppercase", fontWeight: 700 }}>{children}</div>
+        {info && <InfoDot text={info} />}
+      </div>
       {right}
     </div>
   );

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { T } from "../constants/theme";
 import { SERVICE_TYPE_COLORS, CHART_COLORS, colorFor } from "../constants/colors";
-import { tally, engineerStats, engineerVisitStats, wsEngineerIds, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
-import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterChip, TitleCell, Txt, BarList, InteractiveDonut, fmtNum, pct, plural } from "../components/ui";
+import { tally, engineerStats, engineerVisitStats, engineerHoursStats, wsEngineerIds, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
+import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterChip, TitleCell, Txt, BarList, InteractiveDonut, InfoDot, fmtNum, pct, plural } from "../components/ui";
 import { SectionLabel, StagePill, YesNo, EngineerPills, caseCustomer, engineerNames, fmtDay, openCase, odooLinkCell } from "./shared";
 import { TagList } from "./WorksheetsTab";
 import { odooTaskUrl, odooEmployeeUrl } from "../lib/odoo";
@@ -23,8 +23,12 @@ const monthLabel = (key) => { const [y, m] = key.split("-").map(Number); return 
 const uniqSorted = (xs) => [...new Set(xs.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
 
 // Pie charts stay readable with ≤ 5 slices: keep the top 4, fold the rest into "Other".
+// "Other" keeps the folded-in items (`others`) so the donut can expand it to show what's inside.
 const topWithOther = (items, n = 4) => (items.length <= n + 1 ? items
-  : [...items.slice(0, n), { key: "Other", value: items.slice(n).reduce((sum, x) => sum + x.value, 0), color: "#CBD5E1", displayKey: `Other (${items.length - n})` }]);
+  : [...items.slice(0, n), {
+      key: "Other", value: items.slice(n).reduce((sum, x) => sum + x.value, 0), color: "#CBD5E1",
+      displayKey: `Other (${items.length - n})`, others: items.slice(n).sort((a, b) => b.value - a.value),
+    }]);
 
 // Completion colour: red (0%) → amber → green (100%).
 const heat = (rate, l) => `hsl(${Math.round(rate * 1.4)}, 70%, ${l}%)`;
@@ -146,7 +150,7 @@ function MonthlyBars({ months, activeKey, onPick, height = 190 }) {
 }
 
 export function ReportTab({ model, userMap }) {
-  const { cases, worksheets } = model;
+  const { cases, worksheets, timesheets } = model;
   const [tmRegion, setTmRegion] = useState(null);   // treemap drill-down: region → engineer
   const [tmEngineer, setTmEngineer] = useState(null);
   const [tmPeek, setTmPeek] = useState(null);       // tile under the mouse / keyboard focus (detail strip)
@@ -297,8 +301,8 @@ export function ReportTab({ model, userMap }) {
         return (
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 11.5, color: T.textSecondary, whiteSpace: "nowrap" }}>{e.logged}/{e.assigned}</span>
-            <div style={{ flex: 1, height: 6, borderRadius: 3, background: T.bgInput, overflow: "hidden" }}>
-              <div style={{ width: `${p}%`, height: "100%", background: heat(p, 45) }} />
+            <div style={{ flex: 1, height: 9, borderRadius: 5, background: T.bgInput, border: `1px solid ${T.border}`, overflow: "hidden" }}>
+              <div style={{ width: `${Math.max(p, p > 0 ? 4 : 0)}%`, height: "100%", borderRadius: 5, background: heat(p, 45), transition: "width 0.2s ease" }} />
             </div>
             <HeatPct value={p} />
           </div>
@@ -344,16 +348,19 @@ export function ReportTab({ model, userMap }) {
     { key: "odoo", label: "Odoo Link", exportOnly: true, exportValue: (w) => odooLinkCell(w.caseId), exportWidth: 14 },
   ];
   // Per-engineer visit stats: slowest average visit first
-  const visitByEngineer = engineerVisitStats(worksheets, userMap);
+  const hoursByEngineer = Object.fromEntries(engineerHoursStats(timesheets).map((h) => [h.id, h]));
+  const visitByEngineer = engineerVisitStats(worksheets, userMap).map((e) => ({ ...e, avgHours: hoursByEngineer[e.id]?.avgHours ?? null }));
   const dayCell = (v) => (v === null ? <Txt>{null}</Txt> : <span className="col-value">{Number.isInteger(v) ? v : fmtNum(v, 1)}</span>);
   const visitEngineerColumns = [
     { key: "name", label: "Engineer", weight: 18, exportWidth: 30, render: (e) => <TitleCell title={e.name} />, sortValue: (e) => e.name, exportValue: (e) => e.name },
     { key: "visits", label: "Visits", weight: 6, info: "Service reports attributed to the engineer (Assigned Service Engineer, else the job's Service Engineers).",
       render: (e) => <span className="col-value">{e.visits}</span>, sortValue: (e) => e.visits },
-    { key: "avg", label: "Avg Days", weight: 7, info: "Average days per visit (Actual Visit End − Start + 1). Visits missing a date are left out.",
+    { key: "avg", label: "Avg Days", weight: 8,
+      info: "How this is calculated: for each of the engineer's service reports (visits), take Actual Visit End Date − Actual Visit Start Date + 1 — both the start and end day count as full days, so a visit that starts and ends on the same day is 1 day. Average Days is the mean of that figure across every one of the engineer's visits that has both a start and an end date. A visit missing either date is skipped entirely — it counts toward Visits above but not toward this average. Engineer attribution: the service report's Assigned Service Engineer, or the job's Service Engineers when that's blank.",
       render: (e) => dayCell(e.avgDays), sortValue: (e) => e.avgDays ?? -1, exportValue: (e) => (e.avgDays === null ? "" : Number(e.avgDays.toFixed(1))) },
-    { key: "min", label: "Shortest", weight: 6, render: (e) => dayCell(e.minDays), sortValue: (e) => e.minDays ?? -1, exportValue: (e) => e.minDays ?? "" },
-    { key: "max", label: "Longest", weight: 6, render: (e) => dayCell(e.maxDays), sortValue: (e) => e.maxDays ?? -1, exportValue: (e) => e.maxDays ?? "" },
+    { key: "avgHours", label: "Avg Hours", weight: 8,
+      info: "Average Total Working Hours per timesheet entry, from the engineer's own timesheets (not the visit dates): sum of Total Working Hours across all of their timesheets, divided by how many timesheet entries they have. Engineer attribution: the timesheet's Submitted By, or the job's Service Engineers when that's blank. Blank when the engineer has no timesheets.",
+      render: (e) => dayCell(e.avgHours), sortValue: (e) => e.avgHours ?? -1, exportValue: (e) => (e.avgHours === null ? "" : Number(e.avgHours.toFixed(1))) },
     { key: "resolution", label: "Resolution Recorded", weight: 9, info: "Share of the engineer's visits with Resolution Applied filled in. Red (0%) → green (100%).",
       render: (e) => <HeatPct value={e.resolutionRate} />, sortValue: (e) => e.resolutionRate, exportValue: (e) => `${e.resolutionRate}%` },
     { key: "problems", label: "Problems Identified", weight: 9, info: "Share of the engineer's visits with at least one Problems Identified tag. Red (0%) → green (100%).",
@@ -424,10 +431,9 @@ export function ReportTab({ model, userMap }) {
       {tmJobs.length > 0 && jobsTable(`${tmEngineerName} · ${tmRegion} · ${plural(tmJobs.length, "job")} (${tmJobs.filter(isCompleted).length} completed)`, tmJobs, `field-service-jobs-${tmRegion}-${tmEngineerName}`, () => setTmEngineer(null), "adage_fsm_report_engineer_jobs_cols_v2")}
 
       {/* ── Engineer ranking & workload ── */}
-      <SectionLabel>Engineer Ranking &amp; Workload</SectionLabel>
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ marginBottom: 10, marginTop: 18 }}>
         <DataTable
-          title="Engineers · worst report rate first"
+          title="Engineer Ranking & Workload"
           columns={engineerColumns}
           rows={r.engineers}
           storageKey="adage_fsm_report_engineer_ranking_cols_v1"
@@ -439,7 +445,11 @@ export function ReportTab({ model, userMap }) {
           exportName="field-service-engineer-ranking"
           maxHeight={420}
           emptyText="No engineers assigned."
-          toolbar={<span title="Report rate = service reports logged ÷ jobs assigned, lifetime. Open = jobs currently in flight (today's workload). Sorted worst report rate first by default; click any column header to re-sort. Click an engineer to list their jobs." style={{ fontSize: 11.5, color: T.textMuted, cursor: "help" }}>ⓘ Click an engineer to see their jobs · Report rate = reports ÷ assigned</span>}
+          toolbar={<span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: T.textMuted }}>Click an engineer to see their jobs <InfoDot text={[
+            { label: "Ranking", formula: "Report Rate = Reports Logged ÷ Jobs Assigned", text: "Sorted worst rate first (lifetime) — an engineer who never files a report sorts to the top no matter how many jobs they've closed." },
+            { label: "Workload", formula: "Assigned = lifetime jobs · Open = jobs in flight now", text: "Assigned is their total-ever caseload; Open is what's actually on their plate today." },
+            { label: "Sort & drill in", text: "Click any column header to re-sort, or click an engineer's row to list their jobs below." },
+          ]} /></span>}
         />
       </div>
       {rankEngineer !== null && (() => {
@@ -477,8 +487,7 @@ export function ReportTab({ model, userMap }) {
       })()}
 
       {/* ── Visit analysis ── */}
-      <SectionLabel>Visit Analysis</SectionLabel>
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ marginBottom: 10, marginTop: 18 }}>
         <DataTable
           title="Visit Analysis by Engineer · slowest visits first"
           columns={visitEngineerColumns}

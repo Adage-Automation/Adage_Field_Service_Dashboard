@@ -3,6 +3,28 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-08 — Manager View: Visit Analysis by Engineer swaps Shortest/Longest for Avg Hours
+
+- Removed the Shortest/Longest visit-days columns. Added Avg Hours: Total Working Hours summed across the
+  engineer's own timesheets ÷ number of timesheet entries (`engineerHoursStats` in derive.js; engineer =
+  the timesheet's Submitted By, else the job's Service Engineers) — a different source table from Avg Days,
+  which stays based on worksheet visit dates. Blank when the engineer has no timesheets.
+- Avg Days' tooltip now spells out the calculation in full (end − start + 1, both days count, visits
+  missing a date excluded) instead of a one-line summary.
+- Removed the grayed "VISIT ANALYSIS" section label above the table; the table's own title carries it.
+
+## 2026-10-08 — Manager View: Engineer Ranking polish + donut "Other" drill-down
+
+- Engineer Ranking & Workload: dropped the duplicate grayed section label (kept the table's own title),
+  thickened/bordered the report-rate bar for legibility, and replaced the hover-only toolbar tooltip with a
+  keyboard-accessible `InfoDot`. The tooltip now uses labeled sections with the Report Rate / Workload
+  formulas in their own highlighted boxes instead of one paragraph.
+- `InfoDot` (`ui.jsx`) now accepts a structured `{label, formula?, text}[]` in addition to a plain string.
+- `InteractiveDonut`: clicking the "Other" slice (ring or legend) now redraws the whole chart and legend
+  into that slice's breakdown, with a "← Back" link to return — instead of a static top-4-plus-Other view.
+  `topWithOther()` in ReportTab.jsx now keeps the folded-in items (`others`) so this works for Problem Types
+  and Service Type.
+
 ## 2026-10-08 — Manager View: visit length, visit dates and recurring problems panels removed
 
 - Removed "How long each visit took" (and its visit list), "Visit Dates" and the "Recurring problems" panel. The recurring

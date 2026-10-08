@@ -244,6 +244,24 @@ export function engineerVisitStats(worksheets, userMap) {
   }));
 }
 
+/** Engineers on a timesheet: its Submitted By, else the case's Service Engineers. */
+export const tsEngineerIds = (t) => (t.engineerIds.length ? t.engineerIds : t.case?.engineerIds || []);
+
+/**
+ * Per-engineer average hours per timesheet entry: Total Working Hours summed across the engineer's
+ * timesheets, divided by how many timesheets they have (not by visit count — one visit can have several
+ * timesheet entries, e.g. one per day worked).
+ */
+export function engineerHoursStats(timesheets) {
+  const m = {};
+  timesheets.forEach((t) => tsEngineerIds(t).forEach((id) => {
+    if (!m[id]) m[id] = { id, timesheets: 0, totalHours: 0 };
+    m[id].timesheets += 1;
+    m[id].totalHours += t.hours;
+  }));
+  return Object.values(m).map((p) => ({ ...p, avgHours: p.timesheets ? p.totalHours / p.timesheets : null }));
+}
+
 /** Days between an ISO date and today (null when missing). */
 const daysAgo = (iso) => {
   const d = dayNum(iso);
