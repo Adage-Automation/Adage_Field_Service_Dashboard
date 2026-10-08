@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+*.timestamp-*.mjs
+*-test.txt
+run-output.txt
