@@ -3,6 +3,118 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-09 — Engineer Schedule: Odoo-style date navigation, moved to the top
+
+- Moved the Engineer Schedule panel from after Engineer Ranking & Workload to right after the KPI row — first
+  thing a manager sees, per the user's request.
+- Added date navigation matching Odoo's own Gantt toolbar (per the user's reference screenshot): ← / → step by
+  the picked period, a **Day / Week / Month / Quarter / Year** picker (`FilterSelect`, reused as-is), a **Today**
+  button, and an explicit From/To range with an **Apply** button that overrides the period/anchor until ←, →,
+  Today or the period picker is used again. New state: `ganttPeriod`, `ganttAnchor`, `ganttCustomRange`, plus
+  `ganttFrom`/`ganttTo` for the two (native `<input type="date">`, no new dependency) range fields.
+- `gantt`'s useMemo, and `EngineerGantt`'s props, generalized from "the current calendar month" to an arbitrary
+  day range: `ganttPeriodRange(period, anchor)` computes day-number bounds for day/week/month/quarter/year,
+  `ganttShiftAnchor` moves the anchor by one period for ←/→. The day header now zero-pads and additionally shows
+  a small month label at each month boundary when the visible range spans more than one calendar month (e.g. a
+  Quarter or Year view, or a custom range crossing months) — a bare day-of-month number alone would be ambiguous
+  there. A custom/period range is capped at 400 days as a defensive guard against a reversed or huge picked
+  range.
+- Verified live via Playwright (clock faked to 2026-09-15, matching the reference screenshot's data): Quarter
+  view showed 13 engineers across Jul–Sep with "Jul 01"/"Aug 01" month markers; → advanced to Oct–Dec (1
+  engineer, matching the already-verified October data); Today returned to the quarter containing the fake
+  "now"; a manual 01/08/2026 → 31/10/2026 range + Apply showed 9 engineers across the custom 92-day span. No
+  console errors in any state.
+
+## 2026-10-09 — Engineer Schedule: restyled as an Odoo-style grouped Gantt
+
+- Restructured `EngineerGantt` to match the grouped layout of Odoo's own Gantt view (per the user's reference
+  screenshot): a collapsible group row per engineer (▾/▶ toggle, name bold), with one sub-row underneath per
+  customer they're visiting this month — instead of every visit crammed into a single per-engineer row needing
+  lane-stacking for every overlap. A visit still gets its own lane within its customer sub-row if two visits for
+  the same engineer+customer overlap in days (rare, but `packLanes` still guards it).
+  Collapse state lives in a new `ganttCollapsed` (Set of engineer ids) + `toggleGanttEngineer`.
+- Added a **Total** row at the bottom: count of visits active on each day across every engineer, deduplicated
+  per worksheet (a 2-engineer visit counts once, not twice) — computed from a flat `allBars` list built
+  alongside the per-engineer/per-customer grouping, not by re-summing the (duplicated) per-row bars.
+- Day header now zero-pads ("01", "02", …) and the row-label column is headed "Workload per person", matching
+  the reference. Kept the app's own light theme/tokens throughout rather than copying Odoo's dark admin chrome,
+  per this app's "same UI/UX as the CRM app" rule.
+- Verified live via Playwright with the browser's `Date` temporarily faked to mid-September 2026 (the richer
+  month shown in the user's reference screenshot, from the same live Odoo instance): 2 engineers rendered as
+  collapsible groups (Sentu Samanta → Jindal Steel Limited (JSL) + TLT Engineering India Pvt. Ltd.; Utpal Kumar
+  Singha → Jindal Steel Limited (JSL)), Total row showing 1 under each active day, and collapsing "Sentu
+  Samanta" correctly hid only its two sub-rows while leaving the Total row and the other engineer's row
+  untouched. No console errors.
+
+## 2026-10-09 — Engineer's Dashboard: Engineer Schedule Gantt chart
+
+- New **Engineer Schedule** panel (`EngineerGantt` in ReportTab.jsx), below Engineer Ranking & Workload: one row
+  per service engineer, one bar per worksheet visit, spanning Actual Visit Start Date → Actual Visit End Date,
+  clipped to the current calendar month. The bar shows the customer (`caseCustomer`); click it to open the job
+  in Odoo (same `openCase` as every other drill-down). Today's column is highlighted.
+- Whose row a visit counts on follows the same rule as Visit Analysis by Engineer (`wsEngineerIds`: the
+  worksheet's Assigned Service Engineer, else the job's Service Engineers) — a visit with two engineers appears
+  on both rows. Visits without a start date aren't plotted; a visit missing only its end date, or a same-day
+  visit, draws as one day.
+- Two visits for the same engineer that overlap in days stack into separate lanes instead of overlapping
+  visually — a small greedy interval-packing helper (`packLanes`), the standard algorithm for this (sort by
+  start, reuse the first lane whose last bar ends before the new one starts).
+- Reused existing building blocks rather than inventing new ones: `dayNum` (now exported from derive.js, was
+  already used internally there for date-only fields) for the month-clipping math, and `hashColor` (now exported
+  from shared.jsx, already used for the Problem/Call Type pills) so a customer gets the same colour here as
+  elsewhere in the app.
+- Verified live via Playwright: October 2026 (the live "today"), 1 engineer has a visit this month ("GAUTAMEE
+  PANDURANG NAIK", Kuantum Papers, 2–6 Oct); clicking the bar opened `project.task/3071` in Odoo with the
+  tooltip's dates matching exactly. No console errors.
+
+## 2026-10-09 — Engineer's Dashboard: fixed summary text, customer/engineer drill-down
+
+- **"All X" summary text was wrong.** Grouped by engineer, the aggregate line summed each tile's job count
+  (`tmItems`), but a job with two engineers is counted once per engineer tile — so it read "27 of 144 cases
+  completed" against a real total of 127/22. Now shows roster utilization instead: "44 of 106 service engineers
+  are assigned" (same numbers as the KPI row), with the meter/pointer repurposed to the assignment rate for this
+  level only — a hovered/selected tile still shows its own real completed/total/rate, unchanged. Grouped by
+  customer or region, the aggregate line no longer claims a (double-counted) completion rate either — it now
+  says "N customers shown" / "N regions shown".
+- **Clicking a tile now drills into a breakdown, not straight to a flat job list.** Grouped by engineer, clicking
+  an engineer tile shows the customers they serve (jobs/completed/hours-worksheets hint per customer); grouped
+  by customer or region, it shows the engineers involved. A "View all N jobs" button (and clicking a breakdown
+  row) still gets to the actual job list, reusing the existing jobs table and Odoo links. New `drillBy`/
+  `drillItems`/`drillColumns` in `ReportTab.jsx`, reusing the same `tile()` shape as the top-level treemap items.
+  `DataTable` needed an explicit `rowKey={(d) => d.key}` here since these rows don't have Odoo `.id`s.
+- Tile hint text (hours worked · worksheets) bumped from 11.5px/16px (huge tiles) to 13px/18px and bolded, and
+  the big-tile number line now reads "N / M jobs completed · R%" instead of "N / M completed · R%".
+- Verified live via Playwright against Odoo: engineer grouping shows "44 of 106 service engineers are assigned";
+  customer grouping shows "102 customers shown"; clicking an engineer tile lists 12 customers served with a
+  working "View all 12 jobs" expansion; clicking a customer tile lists the 2 engineers assigned to it. No
+  console errors after fixing a missing-`rowKey` React warning.
+
+## 2026-10-09 — Engineer's Dashboard: Unassigned Service Engineers view
+
+- `App.jsx` now fetches the full roster (`hr.employee` reporting to Samaresh Dey, id 184) as `{id, name}` pairs
+  instead of just a count, and excludes archived employees (dropped `active_test: false` from that one fetch —
+  the employee-name-resolution fetch used elsewhere keeps it, since historic records can reference former
+  employees). Passed down to `ReportTab` as `serviceEngineers`.
+- The treemap panel (grouped by Service Engineer) gets an **All Engineers / Unassigned Service Engineers (N)**
+  pill pair beside the breadcrumb. Unassigned = roster employees with zero live, non-cancelled jobs — computed
+  as `serviceEngineers` minus the ids in `r.engineers` (which only ever contains engineers with ≥ 1 case).
+  Only shown when grouped by Service Engineer; switching the Group by dropdown away resets back to the normal
+  view.
+- Unassigned engineers render as a new `UnassignedGrid`: equal-size grey tiles, name only (no rate/size/hours,
+  since there's nothing to compute). The completion-rate meter above the treemap shows an empty/neutral bar
+  instead of 0% or 100% in this view, and the job filters (Year/Month/Customer/Problem Type) are hidden since
+  they don't apply. Verified in headless-free Chrome via Playwright: 105 roster engineers, 44 assigned, 63 shown
+  as unassigned tiles with no console errors; switching back to All Engineers restores the normal treemap.
+
+## 2026-10-09 — Engineer's Dashboard: bigger treemap, simpler tile text
+
+- Treemap height increased from `clamp(280px, 38vw, 420px)` to `clamp(380px, 46vw, 560px)` so tiles (and their
+  labels) stay readable instead of getting squeezed, especially with many engineers/customers/regions.
+- Tile hint trimmed to hours worked + worksheet count only (dropped the open/late count and the
+  customer/engineer breadth count — too much crammed onto one line). A tile that fills most/all of the treemap
+  (e.g. only one engineer shown) now renders its text at ~2x size instead of leaving the extra space blank.
+  Verified with `npm run build`.
+
 ## 2026-10-09 — Manager View: Customer Insights view switch, legend filters
 
 - **Bar Graph / Grid** switch on the Customer Insights heading: it shows either the chart or the table, not both.

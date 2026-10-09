@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { T } from "../constants/theme";
 import { SERVICE_TYPE_COLORS, CHART_COLORS, colorFor } from "../constants/colors";
-import { tally, engineerStats, customerStats, engineerVisitStats, engineerHoursStats, wsEngineerIds, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
+import { tally, engineerStats, customerStats, engineerVisitStats, engineerHoursStats, wsEngineerIds, dayNum, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
 import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterSelect, FilterChip, TitleCell, Txt, BarList, InteractiveDonut, InfoDot, KpiCard, KpiRow, fmtNum, pct, plural } from "../components/ui";
-import { SectionLabel, StagePill, YesNo, EngineerPills, caseCustomer, engineerNames, fmtDay, openCase, odooLinkCell } from "./shared";
+import { SectionLabel, StagePill, YesNo, EngineerPills, caseCustomer, engineerNames, fmtDay, openCase, odooLinkCell, hashColor } from "./shared";
 import { TagList } from "./WorksheetsTab";
 import { odooTaskUrl, odooEmployeeUrl } from "../lib/odoo";
 
@@ -106,10 +106,11 @@ const tileLabel = (t) => `${t.label}: ${t.completed} of ${t.value} completed (${
 
 function Treemap({ items, selectedKey, onSelect, onPeek }) {
   return (
-    <div style={{ position: "relative", width: "100%", height: "clamp(280px, 38vw, 420px)", borderRadius: 8, overflow: "hidden", background: T.bgInput }}>
+    <div style={{ position: "relative", width: "100%", height: "clamp(380px, 46vw, 560px)", borderRadius: 8, overflow: "hidden", background: T.bgInput }}>
       <style>{`.tm-tile:hover { filter: brightness(0.95); } .tm-tile:focus-visible { outline: 3px solid ${T.accent}; outline-offset: -3px; z-index: 1; }`}</style>
       {squarify(items).map((t) => {
         const big = t.w > 90 && t.h > 44;
+        const huge = t.w > 400 && t.h > 150; // tile fills most/all of the treemap (e.g. only one item) → scale text up to match
         const active = t.key === selectedKey;
         return (
           <button key={t.key} type="button" className="tm-tile" onClick={() => onSelect(t.key)} title={tileLabel(t)} aria-label={tileLabel(t)} aria-pressed={active}
@@ -118,10 +119,10 @@ function Treemap({ items, selectedKey, onSelect, onPeek }) {
               boxSizing: "border-box", margin: 0, padding: big ? "8px 10px" : 4, background: heat(t.rate, 88), border: `2px solid ${active ? T.accent : "#fff"}`,
               cursor: "pointer", overflow: "hidden", textAlign: "left", verticalAlign: "top", display: "block", fontFamily: "inherit", transition: "filter 0.15s" }}>
             {big ? (
-              <span style={{ display: "block", position: "absolute", top: 8, left: 10, right: 10 }}>
-                <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: T.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</span>
-                <span style={{ display: "block", fontSize: 18, fontWeight: 800, color: heat(t.rate, 28), marginTop: 2 }}>{t.completed}<span style={{ fontSize: 12, fontWeight: 600, color: T.textSecondary }}> / {t.value} completed · {t.rate}%</span></span>
-                <span style={{ display: "block", fontSize: 11.5, color: T.textSecondary, marginTop: 2 }}>{t.hint}</span>
+              <span style={{ display: "block", position: "absolute", top: huge ? 16 : 8, left: huge ? 18 : 10, right: huge ? 18 : 10 }}>
+                <span style={{ display: "block", fontSize: huge ? 22 : 12.5, fontWeight: 700, color: T.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.label}</span>
+                <span style={{ display: "block", fontSize: huge ? 40 : 18, fontWeight: 800, color: heat(t.rate, 28), marginTop: huge ? 8 : 2 }}>{t.completed}<span style={{ fontSize: huge ? 20 : 12, fontWeight: 600, color: T.textSecondary }}> / {t.value} jobs completed · {t.rate}%</span></span>
+                <span style={{ display: "block", fontSize: huge ? 18 : 13, fontWeight: 600, color: T.textSecondary, marginTop: huge ? 8 : 2 }}>{t.hint}</span>
               </span>
             ) : (
               <span style={{ display: "block", position: "absolute", top: 4, left: 4, right: 4 }}>
@@ -132,6 +133,21 @@ function Treemap({ items, selectedKey, onSelect, onPeek }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// Equal-size grey tiles, name only — the roster's bench (no jobs, so no rate/size/hours to show).
+function UnassignedGrid({ engineers }) {
+  if (!engineers.length) return <div style={{ color: T.textMuted, fontSize: 12, textAlign: "center", padding: "18px 0" }}>Every roster engineer has at least one job.</div>;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
+      {engineers.map((e) => (
+        <div key={e.id} title={e.name} style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 10px",
+          borderRadius: 8, background: T.bgInput, border: `1px solid ${T.border}`, textAlign: "center" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: T.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -296,11 +312,132 @@ function MonthlyBars({ months, activeKey, onPick, height = 190 }) {
   );
 }
 
-export function ReportTab({ model, userMap, serviceEngineerCount }) {
+// ─── Engineer schedule (Gantt): one lane per overlapping visit ────────────────
+// Greedy interval packing: each bar takes the first lane whose last visit ends before this one starts.
+function packLanes(bars) {
+  const laneEnds = [];
+  const out = [...bars].sort((a, b) => a.startDay - b.startDay).map((b) => {
+    let lane = laneEnds.findIndex((end) => end < b.startDay);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(b.endDay); } else laneEnds[lane] = b.endDay;
+    return { ...b, lane };
+  });
+  return { bars: out, laneCount: Math.max(1, laneEnds.length) };
+}
+
+const GANTT_ROW_LABEL_W = 190, GANTT_BAR_H = 24, GANTT_BAR_GAP = 4, GANTT_DAY_MIN_W = 24;
+const GANTT_PERIODS = [
+  { value: "day", label: "Day" }, { value: "week", label: "Week" }, { value: "month", label: "Month" },
+  { value: "quarter", label: "Quarter" }, { value: "year", label: "Year" },
+];
+const pad2 = (n) => String(n).padStart(2, "0");
+const dayNumToISO = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
+
+// Day-number (UTC-day-since-epoch) range for a period anchored on a given date.
+function ganttPeriodRange(period, anchor) {
+  const y = anchor.getFullYear(), m = anchor.getMonth(), d = anchor.getDate();
+  if (period === "day") { const s = Date.UTC(y, m, d) / 86400000; return { start: s, end: s }; }
+  if (period === "week") { const dow = (anchor.getDay() + 6) % 7; const s = Date.UTC(y, m, d - dow) / 86400000; return { start: s, end: s + 6 }; }
+  if (period === "quarter") { const qm = Math.floor(m / 3) * 3; return { start: Date.UTC(y, qm, 1) / 86400000, end: Date.UTC(y, qm + 3, 0) / 86400000 }; }
+  if (period === "year") return { start: Date.UTC(y, 0, 1) / 86400000, end: Date.UTC(y, 11, 31) / 86400000 };
+  return { start: Date.UTC(y, m, 1) / 86400000, end: Date.UTC(y, m + 1, 0) / 86400000 }; // month
+}
+const ganttShiftAnchor = (anchor, period, dir) => {
+  const d = new Date(anchor);
+  if (period === "day") d.setDate(d.getDate() + dir);
+  else if (period === "week") d.setDate(d.getDate() + dir * 7);
+  else if (period === "quarter") d.setMonth(d.getMonth() + dir * 3);
+  else if (period === "year") d.setFullYear(d.getFullYear() + dir);
+  else d.setMonth(d.getMonth() + dir); // month
+  return d;
+};
+
+// Odoo-style grouped Gantt: engineer group rows (collapsible) → one sub-row per customer they visited → bars.
+function EngineerGantt({ engineers, days, todayDay, totals, collapsed, onToggle }) {
+  if (!engineers.length) return <div style={{ color: T.textMuted, fontSize: 12, textAlign: "center", padding: "24px 0" }}>No visits with a start date fall in this range.</div>;
+  const daysInRange = days.length;
+  const left = (d) => `${((d - 1) / daysInRange) * 100}%`;
+  const width = (n) => `${(n / daysInRange) * 100}%`;
+  const todayCol = todayDay && (
+    <div aria-hidden="true" style={{ position: "absolute", top: 0, bottom: 0, left: left(todayDay), width: width(1), background: T.accentBg }} />
+  );
+  // A range spanning more than one calendar month shows a small month label at each month's first column.
+  const spansMonths = days[0]?.slice(0, 7) !== days[daysInRange - 1]?.slice(0, 7);
+  return (
+    <div style={{ overflowX: "auto", border: `1px solid ${T.border}`, borderRadius: 8 }}>
+      <div style={{ minWidth: GANTT_ROW_LABEL_W + daysInRange * GANTT_DAY_MIN_W }}>
+        <div style={{ display: "flex", position: "sticky", top: 0, zIndex: 2, background: T.bgCardAlt, borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ width: GANTT_ROW_LABEL_W, flexShrink: 0, padding: "8px 10px", fontSize: 12, fontWeight: 700, color: T.textPrimary, borderRight: `1px solid ${T.border}` }}>Workload per person</div>
+          <div style={{ flex: 1, display: "flex" }}>
+            {days.map((iso, i) => {
+              const col = i + 1, d = Number(iso.slice(8, 10)), isToday = col === todayDay;
+              const showMonth = spansMonths && (d === 1 || i === 0);
+              return (
+                <div key={iso} style={{ flex: 1, textAlign: "center", fontSize: 11, fontWeight: isToday ? 800 : 600, lineHeight: 1.3,
+                  color: isToday ? T.accent : T.textSecondary, padding: "4px 0", borderLeft: `1px solid ${T.border}`,
+                  background: isToday ? T.accentBg : "transparent" }}>
+                  {showMonth && <div style={{ fontSize: 9, fontWeight: 700, color: T.textMuted }}>{new Date(iso).toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" })}</div>}
+                  {pad2(d)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {engineers.map((e) => {
+          const isCollapsed = collapsed.has(e.id);
+          return (
+            <div key={e.id}>
+              <div style={{ display: "flex", background: T.bgCardAlt, borderBottom: `1px solid ${T.border}` }}>
+                <button type="button" onClick={() => onToggle(e.id)} aria-expanded={!isCollapsed}
+                  style={{ width: GANTT_ROW_LABEL_W, flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "none",
+                    background: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, color: T.textPrimary, textAlign: "left", borderRight: `1px solid ${T.border}`, fontFamily: "inherit" }}>
+                  <span aria-hidden="true" style={{ display: "inline-block", fontSize: 10, transition: "transform 0.15s", transform: isCollapsed ? "rotate(-90deg)" : "none" }}>▾</span>
+                  <span title={e.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                </button>
+                <div style={{ flex: 1, position: "relative" }}>{todayCol}</div>
+              </div>
+              {!isCollapsed && e.customers.map((c) => (
+                <div key={c.key} style={{ display: "flex", borderBottom: `1px solid ${T.border}` }}>
+                  <div title={c.name} style={{ width: GANTT_ROW_LABEL_W, flexShrink: 0, padding: "0 10px 0 28px", fontSize: 11.5, color: T.textSecondary,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", borderRight: `1px solid ${T.border}` }}>{c.name}</div>
+                  <div style={{ position: "relative", flex: 1, height: c.laneCount * (GANTT_BAR_H + GANTT_BAR_GAP) + GANTT_BAR_GAP }}>
+                    {todayCol}
+                    {c.bars.map((b) => (
+                      <button key={b.id} type="button" onClick={() => openCase(b.case || { id: b.caseId })}
+                        title={`${b.customer}${b.jobName ? ` · ${b.jobName}` : ""} · ${fmtDay(b.start)} → ${fmtDay(b.end || b.start)}`}
+                        style={{ position: "absolute", left: left(b.startDay), width: width(b.endDay - b.startDay + 1),
+                          top: b.lane * (GANTT_BAR_H + GANTT_BAR_GAP) + GANTT_BAR_GAP, height: GANTT_BAR_H, border: "none", borderRadius: 5, padding: "0 6px", cursor: "pointer",
+                          background: hashColor(b.customer), color: "#fff", fontSize: 10.5, fontWeight: 700, fontFamily: "inherit", textAlign: "left",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", boxShadow: "0 1px 2px rgba(0,0,0,0.15)" }}>
+                        {b.customer}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+        <div style={{ display: "flex", background: T.bgCardAlt }}>
+          <div style={{ width: GANTT_ROW_LABEL_W, flexShrink: 0, padding: "8px 10px", fontSize: 12, fontWeight: 700, color: T.textPrimary, borderRight: `1px solid ${T.border}` }}>Total</div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", height: 32 }}>
+            {totals.map((n, i) => (
+              <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: n ? "#fff" : T.textMuted,
+                background: n ? T.accent : "transparent", borderRadius: n ? 4 : 0, margin: n ? "0 1px" : 0, padding: "2px 0" }}>{n || ""}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ReportTab({ model, userMap, serviceEngineerCount, serviceEngineers = [] }) {
   const { cases, worksheets, timesheets } = model;
   const [tmGroupBy, setTmGroupBy] = useState("engineer"); // treemap grouping: engineer (default) | customer | region
+  const [tmView, setTmView] = useState("assigned");  // engineer grouping only: "assigned" (treemap) | "unassigned" (bench engineers)
   const [tmKey, setTmKey] = useState(null);         // clicked tile within the current grouping
   const [tmPeek, setTmPeek] = useState(null);       // tile under the mouse / keyboard focus (detail strip)
+  const [tmDrillKey, setTmDrillKey] = useState(null); // clicked row in the tile's breakdown (customer, if grouped by engineer; else engineer); "__ALL__" = all jobs, no breakdown filter
   const [fYear, setFYear] = useState([]);           // treemap filters (Created On year / month, customer, problem type)
   const [fMonth, setFMonth] = useState([]);
   const [fCustomer, setFCustomer] = useState([]);
@@ -404,31 +541,51 @@ export function ReportTab({ model, userMap, serviceEngineerCount }) {
     problem: { key: "problem", label: "Problem Type", options: jobOptions.problem, selected: p[0], onChange: p[1], searchable: true },
   });
   const tmCases = r.live.filter((c) => matchesJob(c, fYear, fMonth, fCustomer, fProblem));
-  // Tile = jobs (size) + completion (colour) + working hours, open / late jobs and worksheets.
+  // Tile = jobs (size) + completion (colour) + working hours and worksheets.
   // A job with two engineers counts (with its hours) for each of them.
-  const tile = (key, label, jobs, extra = "") => {
+  const tile = (key, label, jobs) => {
     const completed = jobs.filter(isCompleted).length;
-    const open = jobs.filter((c) => c.isOpen);
-    const late = open.filter((c) => (c.ageDays ?? 0) > LATE_DAYS).length;
     const hours = jobs.reduce((s, c) => s + c.hours, 0);
     const reports = jobs.filter((c) => c.hasWorksheet).length;
-    const hint = [extra, `${fmtNum(hours, 0)} h worked`, `${open.length} open${late ? ` (${late} late)` : ""}`, plural(reports, "worksheet")].filter(Boolean).join(" · ");
+    const hint = `${fmtNum(hours, 0)} h worked · ${plural(reports, "worksheet")}`;
     return { key, label, value: jobs.length, completed, rate: pct(completed, jobs.length), hint };
   };
   // A job groups under each of its engineers when grouping by engineer; one key otherwise.
   const tmGroupKeys = (c) => (tmGroupBy === "engineer" ? (c.engineerIds.length ? c.engineerIds.map(String) : ["none"])
     : tmGroupBy === "customer" ? [caseCustomer(c) || "No customer"] : [regionOf(c)]);
   const tmKeyLabel = (key) => (tmGroupBy === "engineer" ? (key === "none" ? "No engineer" : userMap[Number(key)] || `Employee #${key}`) : key);
-  const tmExtra = (jobs) => (tmGroupBy === "engineer" ? plural(new Set(jobs.map(caseCustomer).filter(Boolean)).size, "customer")
-    : plural(new Set(jobs.flatMap((c) => c.engineerIds)).size, "engineer"));
   const tmItems = Object.entries(tmCases.reduce((m, c) => (tmGroupKeys(c).forEach((k) => (m[k] = m[k] || []).push(c)), m), {}))
-    .map(([k, jobs]) => tile(k, tmKeyLabel(k), jobs, tmExtra(jobs)));
+    .map(([k, jobs]) => tile(k, tmKeyLabel(k), jobs));
   const tmJobs = tmKey ? tmCases.filter((c) => tmGroupKeys(c).includes(tmKey)) : [];
   const tmSelectedLabel = tmItems.find((t) => t.key === tmKey)?.label;
-  const tmSelect = (key) => setTmKey((v) => (v === key ? null : key));
+  const tmSelect = (key) => { setTmDrillKey(null); setTmKey((v) => (v === key ? null : key)); };
+  // Clicking a tile drills into a breakdown by the *other* dimension, not straight to a job list:
+  // engineer tile → which customers they serve; customer or region tile → which engineers are in it.
+  const drillBy = tmGroupBy === "engineer" ? "customer" : "engineer";
+  const drillLabel = drillBy === "customer" ? "Customer" : "Engineer";
+  const drillGroupKeys = (c) => (drillBy === "customer" ? [caseCustomer(c) || "No customer"]
+    : (c.engineerIds.length ? c.engineerIds.map(String) : ["none"]));
+  const drillKeyLabel = (key) => (drillBy === "customer" ? key : (key === "none" ? "No engineer" : userMap[Number(key)] || `Employee #${key}`));
+  const drillItems = tmKey ? Object.entries(tmJobs.reduce((m, c) => (drillGroupKeys(c).forEach((k) => (m[k] = m[k] || []).push(c)), m), {}))
+    .map(([k, jobs]) => tile(k, drillKeyLabel(k), jobs)) : [];
+  const tmDrillJobs = tmDrillKey === "__ALL__" ? tmJobs : tmDrillKey ? tmJobs.filter((c) => drillGroupKeys(c).includes(tmDrillKey)) : [];
+  const drillColumns = [
+    { key: "name", label: drillLabel, weight: 32, render: (d) => <TitleCell title={d.label} />, sortValue: (d) => d.label },
+    { key: "jobs", label: "Jobs", weight: 10, render: (d) => <span className="col-value">{d.value}</span>, sortValue: (d) => d.value },
+    { key: "completed", label: "Completed", weight: 14, render: (d) => <HeatPct value={d.rate}>{d.completed}/{d.value}</HeatPct>, sortValue: (d) => d.rate },
+    { key: "hint", label: "Details", weight: 28, render: (d) => <Txt style={{ color: T.textMuted }}>{d.hint}</Txt>, sortValue: () => 0 },
+  ];
   const tmGroupLabel = GROUP_OPTIONS.find((o) => o.value === tmGroupBy).label;
   const tmGroupPlural = tmGroupBy === "region" ? "regions" : tmGroupBy === "customer" ? "customers" : "engineers";
+  // Roster employees (reporting to the Service Manager) with zero live, non-cancelled jobs — never appear in r.engineers.
+  const assignedEngineerIds = new Set(r.engineers.map((e) => e.id));
+  const unassignedEngineers = serviceEngineers.filter((e) => !assignedEngineerIds.has(e.id)).sort((a, b) => a.name.localeCompare(b.name));
   const crumb = (label, onClick) => <button onClick={onClick} style={{ border: "none", background: "none", padding: 0, color: T.accent, fontWeight: 600, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>{label}</button>;
+  const viewTab = (label, active, onClick) => (
+    <button type="button" onClick={onClick} aria-pressed={active}
+      style={{ border: "none", padding: "2px 8px", borderRadius: 999, fontFamily: "inherit", fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer",
+        color: active ? T.textPrimary : T.accent, background: active ? T.bgCard : "transparent" }}>{label}</button>
+  );
   const jobsTable = (title, rows, exportName, onClose, storageKey) => (
     <div style={{ marginBottom: 10 }}>
       <DataTable
@@ -585,6 +742,64 @@ export function ReportTab({ model, userMap, serviceEngineerCount }) {
       render: (c) => <Txt>{c.lastJobDays === null ? null : `${c.lastJobDays}d ago`}</Txt>, sortValue: (c) => c.lastJobDays ?? Infinity, exportValue: (c) => c.lastJobDays ?? "" },
   ];
 
+  // ── Engineer schedule (Gantt): visits this calendar month, Actual Visit Start → End Date ──
+  const [ganttPeriod, setGanttPeriod] = useState("month"); // day | week | month | quarter | year — zoom level for Prev/Next/Today
+  const [ganttAnchor, setGanttAnchor] = useState(() => new Date()); // reference date the period is computed around
+  const [ganttCustomRange, setGanttCustomRange] = useState(null); // { start, end } ISO strings from the date-range picker; overrides period+anchor until cleared
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const [ganttFrom, setGanttFrom] = useState(() => dayNumToISO(ganttPeriodRange("month", new Date()).start));
+  const [ganttTo, setGanttTo] = useState(() => dayNumToISO(ganttPeriodRange("month", new Date()).end));
+  const ganttNav = (dir) => { setGanttCustomRange(null); setGanttAnchor((a) => ganttShiftAnchor(a, ganttPeriod, dir)); };
+  const ganttToday = () => { setGanttCustomRange(null); setGanttAnchor(new Date()); };
+  const ganttSetPeriod = (p) => { setGanttPeriod(p); setGanttCustomRange(null); };
+  const ganttApplyRange = () => { if (ganttFrom && ganttTo && ganttFrom <= ganttTo) setGanttCustomRange({ start: ganttFrom, end: ganttTo }); };
+
+  const gantt = useMemo(() => {
+    const MAX_DAYS = 400; // guard against a huge/reversed custom range
+    const { start: rawStart, end: rawEnd } = ganttCustomRange
+      ? { start: dayNum(ganttCustomRange.start), end: dayNum(ganttCustomRange.end) }
+      : ganttPeriodRange(ganttPeriod, ganttAnchor);
+    const rangeStart = rawStart;
+    const rangeEnd = Math.min(rawEnd, rangeStart + MAX_DAYS - 1);
+    const daysInRange = rangeEnd - rangeStart + 1;
+    const todayNum = dayNum(todayISO);
+    const todayDay = todayNum >= rangeStart && todayNum <= rangeEnd ? todayNum - rangeStart + 1 : null;
+    const allBars = []; // one entry per worksheet touching this range (for the Total row — not duplicated per engineer)
+    const byEngineer = {}; // id -> { name, customers: { customerName -> bars[] } }
+    worksheets.forEach((w) => {
+      const start = dayNum(w.x_studio_actual_visit_start_date);
+      if (start === null) return; // nothing to plot without a start date
+      const end = dayNum(w.x_studio_actual_visit_end_date) ?? start;
+      if (end < rangeStart || start > rangeEnd) return; // doesn't touch this range
+      const customer = caseCustomer(w.case) || w.case?.name || "No customer";
+      const bar = {
+        id: w.id, caseId: w.caseId, case: w.case, customer, jobName: w.case?.name || "",
+        start: w.x_studio_actual_visit_start_date, end: w.x_studio_actual_visit_end_date,
+        startDay: Math.max(start, rangeStart) - rangeStart + 1,
+        endDay: Math.min(end, rangeEnd) - rangeStart + 1,
+      };
+      allBars.push(bar);
+      wsEngineerIds(w).forEach((id) => {
+        const e = (byEngineer[id] = byEngineer[id] || { id: Number(id), name: userMap[id] || `Employee #${id}`, customers: {} });
+        (e.customers[customer] = e.customers[customer] || []).push(bar);
+      });
+    });
+    const engineers = Object.values(byEngineer).map((e) => ({
+      id: e.id, name: e.name,
+      customers: Object.entries(e.customers).map(([name, bars]) => ({ key: name, name, ...packLanes(bars) }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    })).sort((a, b) => a.name.localeCompare(b.name));
+    const totals = Array.from({ length: daysInRange }, (_, i) => allBars.filter((b) => b.startDay <= i + 1 && b.endDay >= i + 1).length);
+    const days = Array.from({ length: daysInRange }, (_, i) => dayNumToISO(rangeStart + i));
+    return { engineers, days, todayDay, totals, rangeStart, rangeEnd };
+  }, [worksheets, userMap, ganttPeriod, ganttAnchor, ganttCustomRange, todayISO]);
+  const [ganttCollapsed, setGanttCollapsed] = useState(() => new Set());
+  const toggleGanttEngineer = (id) => setGanttCollapsed((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
   const empty = (text) => <div style={{ color: T.textMuted, fontSize: 12, textAlign: "center", padding: "18px 0" }}>{text}</div>;
 
   return (
@@ -598,27 +813,92 @@ export function ReportTab({ model, userMap, serviceEngineerCount }) {
         <KpiCard label="Assigned Engineers" value={fmtNum(r.engineers.length)} info="Of those, engineers with at least one case assigned to them." />
       </KpiRow>
 
+      {/* ── Engineer schedule (Gantt) ── */}
+      <Panel grow={false} style={{ marginBottom: 10 }} title="Engineer Schedule"
+        info={[
+          { label: "Rows", text: "One group per engineer (click the name, or the ▾, to collapse it), with one row underneath per customer they visit in the shown range. A visit with two engineers appears under both their groups." },
+          { label: "Bars", formula: "Bar = Actual Visit Start Date → Actual Visit End Date on the worksheet", text: "Clipped to the shown range; a visit without a start date isn't shown. A one-day visit (or a visit missing its end date) draws as a single day." },
+          { label: "Whose row", text: "The worksheet's Assigned Service Engineer, else the job's Service Engineers — same as Visit Analysis by Engineer." },
+          { label: "Overlaps", text: "Two visits for the same engineer and customer on overlapping days stack into separate lanes within that row." },
+          { label: "Bar colour & click", text: "Coloured by customer (same colour for that customer elsewhere, e.g. the Problems & Resolutions tags). Click a bar to open the job in Odoo." },
+          { label: "Total row", formula: "Total = count of visits active on that day, across every engineer", text: "Counts each worksheet once even if it has more than one engineer." },
+          { label: "Navigate", text: "← / → step by the picked period (Day/Week/Month/Quarter/Year); Today jumps back to now. Or pick an explicit From/To range and click Apply — that stays in effect until you use ←/→/Today/the period picker again." },
+        ]}>
+        <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button type="button" onClick={() => ganttNav(-1)} aria-label="Previous period"
+              style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>←</button>
+            <button type="button" onClick={() => ganttNav(1)} aria-label="Next period"
+              style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 14, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>→</button>
+          </div>
+          <FilterSelect value={ganttPeriod} onChange={ganttSetPeriod} options={GANTT_PERIODS} width={110} />
+          <button type="button" onClick={ganttToday}
+            style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>Today</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+            <input type="date" value={ganttFrom} onChange={(e) => setGanttFrom(e.target.value)} aria-label="Range start"
+              style={{ padding: "5px 8px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textPrimary, fontSize: 12, fontFamily: "inherit" }} />
+            <span style={{ color: T.textMuted, fontSize: 12 }}>→</span>
+            <input type="date" value={ganttTo} onChange={(e) => setGanttTo(e.target.value)} aria-label="Range end"
+              style={{ padding: "5px 8px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textPrimary, fontSize: 12, fontFamily: "inherit" }} />
+            <button type="button" onClick={ganttApplyRange}
+              style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: T.accent, color: "#fff", fontSize: 12, fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>Apply</button>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: T.textMuted, marginBottom: 10 }}>
+          {fmtDay(dayNumToISO(gantt.rangeStart))} → {fmtDay(dayNumToISO(gantt.rangeEnd))} · {plural(gantt.engineers.length, "engineer")} with a visit · hover a bar for the job and dates; click to open it in Odoo; click an engineer to collapse their row.
+        </div>
+        <EngineerGantt engineers={gantt.engineers} days={gantt.days} todayDay={gantt.todayDay} totals={gantt.totals} collapsed={ganttCollapsed} onToggle={toggleGanttEngineer} />
+      </Panel>
+
       {/* ── Engineer's dashboard: treemap, ranking & visit analysis ── */}
       <SectionLabel>Engineer's Dashboard</SectionLabel>
-      <Panel grow={false} style={{ marginBottom: 10 }} title={`${tmGroupLabel} · completed vs assigned`}
+      <Panel grow={false} style={{ marginBottom: 10 }} title={tmGroupBy === "engineer" && tmView === "unassigned" ? "Unassigned Service Engineers" : `${tmGroupLabel} · completed vs assigned`}
         info={[
           { label: "Tile size", formula: "Size = number of jobs (cancelled jobs excluded)", text: "Tiles group jobs by the picked dimension — Service Engineer, Customer or Region. A job with two engineers counts for each when grouped by engineer." },
           { label: "Tile colour & pointer", formula: "Completion % = Completed jobs / All jobs × 100", text: "Red at 0% → amber → green at 100%. Completed = stage name contains Completed or Done." },
-          { label: "Tile details", formula: "Hours = Σ Total Working Hours on the tile's jobs", text: `Open = not completed; late = open and created more than ${LATE_DAYS} days ago; worksheets = jobs with at least one worksheet.` },
-          { label: "Navigate", text: "Click a tile to list its jobs; click it again to go back to all. Switch the grouping with the dropdown. Year / Month / Customer / Problem Type filters apply to the treemap only." },
+          { label: "Tile details", formula: "Hours = Σ Total Working Hours on the tile's jobs", text: "Worksheets = jobs with at least one worksheet." },
+          { label: "Navigate", text: "Click a tile to drill in: grouped by engineer, you see the customers they serve; grouped by customer or region, you see the engineers involved. Click a breakdown row (or \"View all jobs\") to list the actual jobs. Click the tile again to go back to all. Switch the grouping with the dropdown. Year / Month / Customer / Problem Type filters apply to the treemap only." },
+          { label: "Unassigned Service Engineers", text: "Roster employees reporting to the Service Manager with zero live jobs (cancelled excluded). No completion rate or hours to show yet, so their tiles are plain and grey." },
         ]}>
         <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-          <FilterSelect value={tmGroupBy} onChange={(v) => { setTmGroupBy(v); setTmKey(null); setTmPeek(null); }} options={GROUP_OPTIONS} prefix="Group by: " width={200} />
+          <FilterSelect value={tmGroupBy} onChange={(v) => { setTmGroupBy(v); setTmKey(null); setTmPeek(null); setTmView("assigned"); setTmDrillKey(null); }} options={GROUP_OPTIONS} prefix="Group by: " width={200} />
           <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: T.textMuted, padding: "6px 10px", borderRadius: 8, background: T.bgInput }}>
-            {crumb(`All ${tmGroupPlural}`, () => setTmKey(null))}
-            {tmSelectedLabel && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{tmSelectedLabel}</span></>}
+            {tmGroupBy === "engineer" ? (
+              <>
+                {viewTab("All Engineers", tmView === "assigned", () => { setTmView("assigned"); setTmKey(null); setTmDrillKey(null); })}
+                {viewTab(`Unassigned Service Engineers${unassignedEngineers.length ? ` (${unassignedEngineers.length})` : ""}`, tmView === "unassigned", () => { setTmView("unassigned"); setTmKey(null); setTmDrillKey(null); })}
+                {tmView === "assigned" && tmSelectedLabel && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{tmSelectedLabel}</span></>}
+              </>
+            ) : (
+              <>
+                {crumb(`All ${tmGroupPlural}`, () => { setTmKey(null); setTmDrillKey(null); })}
+                {tmSelectedLabel && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{tmSelectedLabel}</span></>}
+              </>
+            )}
           </div>
         </div>
-        {(() => {
+        {tmView === "unassigned" ? (
+          <div aria-live="polite" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: 12, color: T.textSecondary }}>
+            <div style={{ width: 260, flexShrink: 0 }}>
+              <div style={{ height: 22 }} />
+              <div role="meter" aria-valuemin={0} aria-valuemax={100} aria-label="No completion rate — these engineers have no jobs"
+                style={{ height: 10, borderRadius: 5, background: T.bgInput, border: `1px solid ${T.border}` }} />
+              <div style={{ textAlign: "center", fontSize: 11, color: T.textMuted, marginTop: 3 }}>No jobs to complete</div>
+            </div>
+            <span style={{ flex: 1, minWidth: 240, padding: "6px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard }}>
+              <strong style={{ color: T.textPrimary }}>{plural(unassignedEngineers.length, "engineer")}</strong> from the roster currently {unassignedEngineers.length === 1 ? "has" : "have"} no job assigned.
+            </span>
+          </div>
+        ) : (() => {
           const shown = tmPeek || tmItems.find((t) => t.key === tmKey);
           const levelJobs = tmItems.reduce((sum, t) => sum + t.value, 0);
           const levelDone = tmItems.reduce((sum, t) => sum + t.completed, 0);
-          const point = shown || { label: `All ${tmGroupPlural}`, rate: pct(levelDone, levelJobs), completed: levelDone, value: levelJobs };
+          // Aggregate ("All X") point: engineer grouping shows roster utilization, not a jobs tally — a job with
+          // two engineers is counted once per engineer tile, so summing tiles double-counts it (inflates cases/rate).
+          const point = shown ? shown
+            : tmGroupBy === "engineer" ? { label: `All ${tmGroupPlural}`, rate: pct(r.engineers.length, serviceEngineerCount) }
+            : { label: `All ${tmGroupPlural}`, rate: pct(levelDone, levelJobs), completed: levelDone, value: levelJobs };
+          const meterCaption = !shown && tmGroupBy === "engineer" ? "assigned" : "completed";
           return (
             <div aria-live="polite" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: 12, color: T.textSecondary }}>
               <div style={{ width: 260, flexShrink: 0 }}>
@@ -628,23 +908,56 @@ export function ReportTab({ model, userMap, serviceEngineerCount }) {
                     <span aria-hidden="true" style={{ width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderTop: `6px solid ${T.textPrimary}` }} />
                   </div>
                 </div>
-                <div role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={point.rate} aria-label={`${point.label}: ${point.rate}% of cases completed`}
+                <div role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={point.rate} aria-label={`${point.label}: ${point.rate}% ${meterCaption}`}
                   style={{ height: 10, borderRadius: 5, background: `linear-gradient(90deg, ${heat(0, 55)}, ${heat(50, 55)}, ${heat(100, 45)})` }} />
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.textMuted, marginTop: 3 }}>
-                  <span>0%</span><span>50%</span><span>100% completed</span>
+                  <span>0%</span><span>50%</span><span>{`100% ${meterCaption}`}</span>
                 </div>
               </div>
               <span style={{ flex: 1, minWidth: 240, padding: "6px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard }}>
                 {shown ? <><strong style={{ color: T.textPrimary }}>{shown.label}</strong>: {shown.completed} of {shown.value} completed ({shown.rate}%) · {shown.hint}{!tmPeek && tmKey ? " · Click this tile again to go back to all." : ""}</>
-                  : <><strong style={{ color: T.textPrimary }}>{point.label}</strong>: {point.completed} of {point.value} cases completed ({point.rate}%). Hover or tab to a tile to move the pointer; click or press Enter to list its jobs.</>}
+                  : tmGroupBy === "engineer" ? <><strong style={{ color: T.textPrimary }}>All {tmGroupPlural}</strong>: {r.engineers.length} of {serviceEngineerCount} service engineers are assigned. Hover or tab to a tile to move the pointer; click or press Enter to see who they serve.</>
+                  : <><strong style={{ color: T.textPrimary }}>All {tmGroupPlural}</strong>: {plural(tmItems.length, tmGroupBy === "customer" ? "customer" : "region")} shown. Hover or tab to a tile to move the pointer; click or press Enter to see who's assigned.</>}
               </span>
             </div>
           );
         })()}
-        <FilterBar count={tmCases.length} noun="job" filters={Object.values(jobFilters([fYear, setFYear], [fMonth, setFMonth], [fCustomer, setFCustomer], [fProblem, setFProblem]))} />
-        {tmItems.length ? <Treemap items={tmItems} selectedKey={tmKey} onSelect={(k) => { setTmPeek(null); tmSelect(k); }} onPeek={setTmPeek} /> : empty("No jobs match these filters")}
+        {tmView === "assigned" && <FilterBar count={tmCases.length} noun="job" filters={Object.values(jobFilters([fYear, setFYear], [fMonth, setFMonth], [fCustomer, setFCustomer], [fProblem, setFProblem]))} />}
+        {tmView === "unassigned"
+          ? <UnassignedGrid engineers={unassignedEngineers} />
+          : (tmItems.length ? <Treemap items={tmItems} selectedKey={tmKey} onSelect={(k) => { setTmPeek(null); tmSelect(k); }} onPeek={setTmPeek} /> : empty("No jobs match these filters"))}
       </Panel>
-      {tmJobs.length > 0 && jobsTable(`${tmSelectedLabel} · ${plural(tmJobs.length, "job")} (${tmJobs.filter(isCompleted).length} completed)`, tmJobs, `field-service-jobs-${tmGroupBy}-${tmSelectedLabel}`, () => setTmKey(null), "adage_fsm_report_engineer_jobs_cols_v2")}
+      {tmKey && (drillItems.length > 0 ? (
+        <div style={{ marginBottom: 10 }}>
+          <DataTable
+            title={`${tmSelectedLabel} · ${drillBy === "customer" ? "customers served" : "engineers assigned"}`}
+            columns={drillColumns}
+            rows={drillItems}
+            rowKey={(d) => d.key}
+            storageKey={`adage_fsm_report_treemap_drill_${drillBy}_cols_v1`}
+            searchText={(d) => d.label}
+            searchPlaceholder={`Search ${drillLabel.toLowerCase()}...`}
+            onRowClick={(d) => setTmDrillKey((v) => (v === d.key ? null : d.key))}
+            rowStyle={(d) => (d.key === tmDrillKey ? { background: T.accentBg } : null)}
+            exportName={`field-service-${tmGroupBy}-${tmSelectedLabel}-${drillBy}-breakdown`}
+            maxHeight={320}
+            toolbar={<>
+              <TableHint text={`Click a ${drillLabel.toLowerCase()} to see their jobs`} info={[
+                { label: drillLabel, formula: drillBy === "customer" ? "Grouped by the job's Customer field" : "Grouped by the job's Service Engineers", text: `Jobs, Completed and the hours/worksheets hint are within ${tmSelectedLabel}'s ${plural(tmJobs.length, "job")} only.` },
+              ]} />
+              <button className="no-print" onClick={() => setTmDrillKey((v) => (v === "__ALL__" ? null : "__ALL__"))}
+                style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: tmDrillKey === "__ALL__" ? T.accentBg : T.bgCard, color: tmDrillKey === "__ALL__" ? T.accent : T.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>
+                View all {plural(tmJobs.length, "job")}
+              </button>
+              <button className="no-print" onClick={() => { setTmKey(null); setTmDrillKey(null); }} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>✕ Close</button>
+            </>}
+          />
+        </div>
+      ) : empty(`No jobs for ${tmSelectedLabel}`))}
+      {tmDrillKey && jobsTable(
+        `${tmSelectedLabel} · ${tmDrillKey === "__ALL__" ? "all jobs" : drillKeyLabel(tmDrillKey)} · ${plural(tmDrillJobs.length, "job")} (${tmDrillJobs.filter(isCompleted).length} completed)`,
+        tmDrillJobs, `field-service-jobs-${tmGroupBy}-${tmSelectedLabel}-${tmDrillKey}`, () => setTmDrillKey(null), "adage_fsm_report_engineer_jobs_cols_v2",
+      )}
 
       {/* ── Engineer ranking & workload ── */}
       <div style={{ marginBottom: 10, marginTop: 18 }}>

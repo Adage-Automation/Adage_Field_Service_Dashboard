@@ -7,7 +7,7 @@ const m2oId = (v) => (Array.isArray(v) ? v[0] : typeof v === "number" ? v : null
 const ids = (v) => (Array.isArray(v) ? v.map((x) => (Array.isArray(x) ? x[0] : typeof x === "object" && x ? x.id : x)).filter((x) => Number.isFinite(x)) : []);
 
 // "YYYY-MM-DD" → UTC day number (avoids timezone drift on date-only fields)
-const dayNum = (iso) => {
+export const dayNum = (iso) => {
   if (!iso) return null;
   const [y, m, d] = String(iso).split(/[T ]/)[0].split("-").map(Number);
   if (!y || !m || !d) return null;

@@ -10,7 +10,7 @@ export const caseEndUser = (c) => c?.x_studio_end_user?.[1] || "";
 export const engineerNames = (idList, userMap) => (idList || []).map((id) => userMap[id] || `Employee #${id}`);
 
 // Stable color per string (regions, call types, etc. have too many values for fixed maps)
-const hashColor = (s = "") => {
+export const hashColor = (s = "") => {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return CHART_COLORS[h % CHART_COLORS.length];
