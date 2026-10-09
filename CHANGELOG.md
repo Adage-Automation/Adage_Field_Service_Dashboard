@@ -3,6 +3,53 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-09 — Manager View: Customer Insights view switch, legend filters
+
+- **Bar Graph / Grid** switch on the Customer Insights heading: it shows either the chart or the table, not both.
+  Bar Graph is the default.
+- Chart metrics are now Jobs, Visits (Worksheets), Visit Days and Working Hours. **In Progress** and **Jobs Without
+  Worksheet** are removed as separate metrics and folded in as below.
+- The legend items are now buttons:
+  - Jobs: **Completed** or **In progress** shows and ranks only those jobs.
+  - Visits (Worksheets): **With worksheet** or **Without worksheet** shows and ranks only those jobs.
+  - Clicking the same item again shows both; changing the metric resets it. The chart title names the part shown.
+- Verified with `npm run build`.
+
+## 2026-10-09 — Manager View: one Top Customers bar chart
+
+- Customer Insights: the two top-10 bar lists are replaced by one horizontal bar chart with a value axis and gridlines.
+  A **By:** picker chooses the metric: Jobs (stacked completed / in progress), Visits, Visit Days, Working Hours, In
+  Progress or Jobs Without Worksheet. A second picker chooses Top 10 / 15 / 20. Clicking a bar still lists that
+  customer's jobs. The table gains a **Visits** column (storage key → `_cols_v2`), and `customerStats` gains
+  `visits` and `unlogged`. Verified with `npm run build`.
+- UX pass on that chart, using the ui-ux-pro-max chart guidance:
+  - In Jobs mode the in-progress count is printed as text next to each bar ("· 3 open"), so the split isn't shown by
+    colour alone. It's also included in each bar's screen-reader label.
+  - The name column shrinks on narrow screens (`clamp(90px, 28%, 190px)`).
+  - Axis labels are now 11 px in the secondary text colour for better contrast.
+
+## 2026-10-09 — Manager View: Customer Insights
+
+- New **Customer Insights** section below the Monthly Trend. It has two top-10 bar lists (customers by jobs, and by
+  working hours) and a per-customer table: jobs, in progress, completed, logged worksheet %, hours, visit days, top
+  problem type, region and last job. Click a bar or a row to list that customer's jobs. The numbers come from the new
+  `customerStats` in derive.js. Verified with `npm run build`.
+
+## 2026-10-09 — Manager View: more engineer ranking renames, highest rate first
+
+- Engineer Ranking & Workload: **Worksheets · Rate** → **Logged Worksheet**, **Hours** → **Total Working Hours**,
+  **Last Worksheet** → **Last Logged In** (days since their latest worksheet). Column order unchanged. The table now
+  sorts by report rate high → low by default (was worst first). Verified with `npm run build`.
+
+## 2026-10-09 — Manager View: ranking column renames, visit totals
+
+- Engineer Ranking & Workload (and the "never reported" Next Steps table, which shares its columns): **Open** renamed
+  **In Progress**, **Backlog** renamed **Unlogged Worksheet**, **Flagged** column removed.
+- Visit Analysis by Engineer: **Avg Days** → **Total Days** (sum of visit days), **Avg Hours** → **Total Hours** (sum of
+  Total Working Hours on the engineer's timesheets). Default sort is now total days, descending. `engineerVisitStats`
+  returns `totalDays` instead of `avgDays`. Column storage keys bumped for all three tables.
+- Verified with `npm run build`.
+
 ## 2026-10-09 — Problems & Resolutions: Year / Month / Customer / Problem Type filters
 
 - The Problems & Resolutions table gets the treemap's four filters (with chips, Clear all and "N worksheets shown"),

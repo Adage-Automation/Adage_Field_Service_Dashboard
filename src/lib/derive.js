@@ -213,6 +213,33 @@ export function engineerStats(cases, userMap) {
   return Object.values(m).map((p) => ({ ...p, rate: p.assigned ? p.logged / p.assigned : 0, lastLoggedDays: daysAgo(p.lastLogged) }));
 }
 
+/** Per-customer stats over the given cases (Customer = partner_id; none → "No customer"). */
+export function customerStats(cases) {
+  const m = {};
+  cases.forEach((c) => {
+    const k = c.partner_id?.[1] || "No customer";
+    if (!m[k]) m[k] = { id: k, name: k, jobs: 0, open: 0, completed: 0, logged: 0, hours: 0, visits: 0, visitDays: 0, problems: {}, regions: new Set(), lastJob: "" };
+    const p = m[k];
+    p.jobs += 1;
+    if (c.isOpen) p.open += 1; else p.completed += 1;
+    if (c.hasWorksheet) p.logged += 1;
+    p.hours += c.hours;
+    p.visits += c.worksheets.length;
+    c.worksheets.forEach((w) => { p.visitDays += w.visitDays ?? 0; });
+    if (c.x_studio_problem_type) p.problems[c.x_studio_problem_type] = (p.problems[c.x_studio_problem_type] || 0) + 1;
+    if (c.x_studio_regions) p.regions.add(c.x_studio_regions);
+    if (c.createdISO > p.lastJob) p.lastJob = c.createdISO;
+  });
+  return Object.values(m).map(({ problems, regions, ...p }) => ({
+    ...p,
+    rate: p.jobs ? p.logged / p.jobs : 0,
+    unlogged: p.jobs - p.logged,
+    topProblem: Object.entries(problems).sort((a, b) => b[1] - a[1])[0]?.[0] || "Not set",
+    regions: [...regions].sort(),
+    lastJobDays: daysAgo(p.lastJob),
+  }));
+}
+
 /** Engineers on a worksheet: its Assigned Service Engineer, else the case's Service Engineers. */
 export const wsEngineerIds = (w) => (w.engineerIds.length ? w.engineerIds : w.case?.engineerIds || []);
 
@@ -237,7 +264,7 @@ export function engineerVisitStats(worksheets, userMap) {
     ...p,
     spareParts: [...spares].sort(),
     measured: days.length,
-    avgDays: days.length ? days.reduce((a, b) => a + b, 0) / days.length : null,
+    totalDays: days.length ? days.reduce((a, b) => a + b, 0) : null,
     minDays: days.length ? Math.min(...days) : null,
     maxDays: days.length ? Math.max(...days) : null,
     problemRate: p.visits ? Math.round((p.withProblems / p.visits) * 100) : 0,

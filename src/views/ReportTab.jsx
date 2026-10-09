@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { T } from "../constants/theme";
 import { SERVICE_TYPE_COLORS, CHART_COLORS, colorFor } from "../constants/colors";
-import { tally, engineerStats, engineerVisitStats, engineerHoursStats, wsEngineerIds, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
-import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterChip, TitleCell, Txt, BarList, InteractiveDonut, InfoDot, fmtNum, pct, plural } from "../components/ui";
+import { tally, engineerStats, customerStats,engineerVisitStats, engineerHoursStats, wsEngineerIds, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
+import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterSelect, FilterChip, TitleCell, Txt, BarList, InteractiveDonut, InfoDot, fmtNum, pct, plural } from "../components/ui";
 import { SectionLabel, StagePill, YesNo, EngineerPills, caseCustomer, engineerNames, fmtDay, openCase, odooLinkCell } from "./shared";
 import { TagList } from "./WorksheetsTab";
 import { odooTaskUrl, odooEmployeeUrl } from "../lib/odoo";
@@ -136,6 +136,117 @@ function Treemap({ items, selectedKey, onSelect, onPeek }) {
   );
 }
 
+// ─── Top customers: horizontal bar chart, metric picked by the user ───────────
+// Each metric plots a customerStats field. Split metrics stack two parts; clicking a legend item shows only that part.
+const CUSTOMER_METRICS = [
+  { value: "jobs", label: "Jobs", unit: "job", parts: [
+    { key: "completed", label: "Completed", short: "done", color: T.success },
+    { key: "open", label: "In progress", short: "open", color: AMBER },
+  ] },
+  { value: "visits", label: "Visits (Worksheets)", unit: "job", parts: [
+    { key: "logged", label: "With worksheet", short: "with", color: T.success },
+    { key: "unlogged", label: "Without worksheet", short: "without", color: AMBER },
+  ] },
+  { value: "visitDays", label: "Visit Days", unit: "day" },
+  { value: "hours", label: "Working Hours", unit: "h" },
+];
+const fmtMetric = (v, unit) => (unit === "h" ? `${fmtNum(v, 0)} h` : plural(Math.round(v), unit));
+// Round the axis up to a 1 / 2 / 5 × 10ⁿ step so the gridlines land on readable numbers.
+const niceAxis = (max, ticks = 4) => {
+  const raw = Math.max(1, max) / ticks;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  return { step, top: Math.ceil(Math.max(1, max) / step) * step };
+};
+
+function CustomerBars({ customers, metric, part, onPart, top, activeKey, onPick }) {
+  const [hover, setHover] = useState(null);
+  const m = CUSTOMER_METRICS.find((x) => x.value === metric) || CUSTOMER_METRICS[0];
+  const shown = m.parts ? m.parts.filter((p) => !part || p.key === part) : null; // parts on the bars (one when a legend item is picked)
+  const val = (c) => (shown ? shown.reduce((s, p) => s + c[p.key], 0) : c[m.value]);
+  const rows = [...customers].filter((c) => val(c) > 0).sort((a, b) => val(b) - val(a)).slice(0, top);
+  const { step, top: axisTop } = niceAxis(rows[0] ? val(rows[0]) : 0);
+  const ticks = Array.from({ length: Math.round(axisTop / step) + 1 }, (_, i) => i * step);
+  const focus = rows.find((c) => c.name === (hover || activeKey));
+  const LABEL_W = "clamp(90px, 28%, 190px)";   // shrinks on narrow screens
+  const VALUE_W = shown?.length > 1 ? 104 : 56; // a split bar also prints its second part, so it needs more room
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8, fontSize: 11.5, color: T.textSecondary, minHeight: 18 }}>
+        {m.parts && m.parts.map((p) => {
+          const on = !part || part === p.key;
+          return (
+            <button key={p.key} type="button" onClick={() => onPart(part === p.key ? null : p.key)} aria-pressed={part === p.key}
+              title={part === p.key ? "Click again to show both" : `Show only ${p.label.toLowerCase()}`}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 999, fontSize: 11.5, fontWeight: part === p.key ? 700 : 500, fontFamily: "inherit", cursor: "pointer",
+                border: `1px solid ${part === p.key ? p.color : T.border}`, background: part === p.key ? T.bgInput : T.bgCard, color: on ? T.textPrimary : T.textMuted, opacity: on ? 1 : 0.6 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 2, background: p.color }} />{p.label}
+            </button>
+          );
+        })}
+        <span aria-live="polite" style={{ marginLeft: "auto", color: T.textPrimary }}>
+          {focus
+            ? <><strong>{focus.name}</strong>: {plural(focus.jobs, "job")} ({focus.completed} completed, {focus.open} in progress) · {plural(focus.visits, "worksheet")} · {fmtNum(focus.hours, 0)} h</>
+            : <span style={{ color: T.textMuted }}>{m.parts ? "Click a legend item to show only that part. " : ""}Hover a customer for details; click to list their jobs.</span>}
+        </span>
+      </div>
+      {!rows.length ? <div style={{ color: T.textMuted, fontSize: 12, textAlign: "center", padding: "18px 0" }}>No customer has any {(shown?.length === 1 ? shown[0].label : m.label).toLowerCase()} yet</div> : <>
+        <div style={{ position: "relative" }}>
+          {/* gridlines behind the bars */}
+          <div aria-hidden="true" style={{ position: "absolute", top: 0, bottom: 0, left: LABEL_W, right: VALUE_W, pointerEvents: "none" }}>
+            {ticks.map((t) => <div key={t} style={{ position: "absolute", top: 0, bottom: 0, left: `${(t / axisTop) * 100}%`, borderLeft: `1px ${t ? "dashed" : "solid"} ${T.border}` }} />)}
+          </div>
+          {rows.map((c, i) => {
+            const v = val(c);
+            const parts = shown ? shown.map((p) => ({ ...p, value: c[p.key] })) : [{ key: m.value, label: m.label, value: v, color: CHART_COLORS[i % CHART_COLORS.length] }];
+            const isActive = activeKey === c.name;
+            const dim = (hover || activeKey) && (hover || activeKey) !== c.name;
+            const second = shown?.length > 1 ? parts[1] : null;
+            return (
+              <button key={c.name} type="button" onClick={() => onPick(c.name)} onMouseEnter={() => setHover(c.name)} onMouseLeave={() => setHover(null)}
+                onFocus={() => setHover(c.name)} onBlur={() => setHover(null)} aria-pressed={isActive}
+                aria-label={`${c.name}: ${fmtMetric(v, m.unit)}${shown ? ` (${parts.map((p) => `${p.value} ${p.label.toLowerCase()}`).join(", ")})` : ""}`}
+                style={{ position: "relative", display: "flex", alignItems: "center", width: "100%", height: 26, padding: 0, border: "none", borderRadius: 6,
+                  background: isActive ? T.accentBg : "transparent", cursor: "pointer", opacity: dim ? 0.45 : 1, transition: "opacity 0.15s", fontFamily: "inherit" }}>
+                <span title={c.name} style={{ width: LABEL_W, flexShrink: 0, paddingRight: 10, textAlign: "right", fontSize: 11.5, fontWeight: isActive ? 700 : 500,
+                  color: isActive ? T.accent : T.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span>
+                <span style={{ flex: 1, height: 16, display: "flex" }}>
+                  <span style={{ width: `${(v / axisTop) * 100}%`, minWidth: 3, height: "100%", display: "flex", borderRadius: "0 4px 4px 0", overflow: "hidden", transition: "width 0.4s ease" }}>
+                    {parts.map((p) => <span key={p.key} title={`${p.label}: ${fmtMetric(p.value, m.unit)}`} style={{ width: v ? `${(p.value / v) * 100}%` : 0, background: p.color }} />)}
+                  </span>
+                </span>
+                <span style={{ width: VALUE_W, flexShrink: 0, paddingLeft: 6, textAlign: "left", fontSize: 11, fontWeight: 700, color: T.textSecondary, whiteSpace: "nowrap" }}>
+                  {m.unit === "h" ? fmtNum(v, 0) : v}{second?.value > 0 && <span style={{ fontWeight: 500, color: second.color }}> · {second.value} {second.short}</span>}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {/* x-axis */}
+        <div style={{ position: "relative", height: 16, marginLeft: LABEL_W, marginRight: VALUE_W, marginTop: 4, borderTop: `1px solid ${T.border}` }}>
+          {ticks.map((t) => <span key={t} style={{ position: "absolute", left: `${(t / axisTop) * 100}%`, transform: "translateX(-50%)", top: 2, fontSize: 11, color: T.textSecondary }}>{fmtNum(t, 0)}</span>)}
+        </div>
+        <div style={{ textAlign: "center", fontSize: 10.5, color: T.textMuted, marginTop: 2 }}>{shown?.length === 1 ? `${m.label} · ${shown[0].label}` : m.label}</div>
+      </>}
+    </div>
+  );
+}
+
+// Grid / Bar Graph switch for Customer Insights (pill pair, same look as the header pills).
+function ViewSwitch({ value, onChange, options }) {
+  return (
+    <div role="group" aria-label="View" className="no-print" style={{ display: "inline-flex", padding: 3, borderRadius: 999, background: T.bgInput, border: `1px solid ${T.border}` }}>
+      {options.map((o) => (
+        <button key={o.value} type="button" onClick={() => onChange(o.value)} aria-pressed={value === o.value}
+          style={{ padding: "4px 14px", borderRadius: 999, border: "none", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+            background: value === o.value ? T.accent : "transparent", color: value === o.value ? "#fff" : T.textSecondary }}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Monthly trend: with vs without worksheet, side by side ───────────────────
 const WITH_WS = T.success, WITHOUT_WS = AMBER;
 
@@ -203,6 +314,11 @@ export function ReportTab({ model, userMap }) {
   const [trendMonth, setTrendMonth] = useState(null);   // clicked month in the monthly trend ("YYYY-MM")
   const [rankEngineer, setRankEngineer] = useState(null); // clicked row in Engineer Ranking & Workload (employee id)
   const [visitEngineer, setVisitEngineer] = useState(null); // clicked row in Visit Analysis by Engineer (employee id)
+  const [custPick, setCustPick] = useState(null);         // clicked customer in Customer Insights (name)
+  const [custMetric, setCustMetric] = useState("jobs");   // what the top-customers chart ranks by
+  const [custTop, setCustTop] = useState(10);
+  const [custPart, setCustPart] = useState(null);       // legend item picked in the chart (e.g. "completed"); null = both
+  const [custView, setCustView] = useState("bar");      // Customer Insights: "bar" graph or "grid" table
   const [expandedAction, setExpandedAction] = useState(null); // Next Steps bullet whose job list is open
   const [actionEngineer, setActionEngineer] = useState(null);  // engineer picked inside the "never reported" action
 
@@ -257,7 +373,7 @@ export function ReportTab({ model, userMap }) {
     const problemTypes = tally(live.map((c) => c.x_studio_problem_type || "Not set"))
       .map((t, i) => ({ ...t, color: t.key === "Not set" ? "#94A3B8" : CHART_COLORS[i % CHART_COLORS.length] }));
 
-    return { live, engineers, backlog, months, waiting, oldestWaiting, recurring, problemTypes, actions };
+    return { live, engineers, customers: customerStats(live), backlog, months, waiting, oldestWaiting, recurring, problemTypes, actions };
   }, [cases, worksheets, userMap]);
 
   // Treemap: regions (size = jobs, colour = % completed) → engineers in that region → their jobs
@@ -344,18 +460,18 @@ export function ReportTab({ model, userMap }) {
   ];
 
   // ── Engineer ranking & workload ──
-  // Report rate = worksheets logged ÷ jobs assigned (lifetime); worst first by default.
+  // Report rate = worksheets logged ÷ jobs assigned (lifetime); highest first by default.
   const engineerColumns = [
     { key: "name", label: "Engineer", weight: 18, exportWidth: 30, render: (e) => <TitleCell title={e.name} />, sortValue: (e) => e.name, exportValue: (e) => e.name },
     { key: "assigned", label: "Assigned", weight: 7, info: [{ label: "Assigned", formula: "Assigned = jobs with this engineer in Service Engineers", text: "Lifetime workload; cancelled jobs excluded. A job with two engineers counts for each." }],
       render: (e) => <span className="col-value">{e.assigned}</span>, sortValue: (e) => e.assigned },
-    { key: "open", label: "Open", weight: 6, info: [{ label: "Open", formula: "Open = Assigned jobs not Completed / Done", text: "The engineer's workload right now." }],
+    { key: "open", label: "In Progress", weight: 7, info: [{ label: "In Progress", formula: "In Progress = Assigned jobs not Completed / Done", text: "The engineer's workload right now." }],
       render: (e) => <Txt>{e.open}</Txt>, sortValue: (e) => e.open },
-    { key: "completed", label: "Completed", weight: 7, info: [{ label: "Completed", formula: "Completed = Assigned − Open", text: "Assigned jobs whose stage name contains Completed or Done." }], render: (e) => <Txt>{e.completed}</Txt>, sortValue: (e) => e.completed },
-    { key: "rate", label: "Worksheets · Rate", weight: 14, exportWidth: 16,
+    { key: "completed", label: "Completed", weight: 7, info: [{ label: "Completed", formula: "Completed = Assigned − In Progress", text: "Assigned jobs whose stage name contains Completed or Done." }], render: (e) => <Txt>{e.completed}</Txt>, sortValue: (e) => e.completed },
+    { key: "rate", label: "Logged Worksheet", weight: 14, exportWidth: 16,
       info: [
         { label: "Worksheets logged", formula: "Logged = Assigned jobs with ≥ 1 worksheet", text: "Shown first as Logged / Assigned." },
-        { label: "Report Rate", formula: "Rate = Logged ÷ Assigned × 100", text: "Colour runs red (0%) → amber → green (100%). The table sorts by this, worst first." },
+        { label: "Report Rate", formula: "Rate = Logged ÷ Assigned × 100", text: "Colour runs red (0%) → amber → green (100%). The table sorts by this, highest first." },
       ],
       render: (e) => {
         const p = pct(e.logged, e.assigned);
@@ -370,16 +486,11 @@ export function ReportTab({ model, userMap }) {
         );
       },
       sortValue: (e) => e.rate, exportValue: (e) => `${e.logged} of ${e.assigned} (${pct(e.logged, e.assigned)}%)` },
-    { key: "backlog", label: "Backlog", weight: 7, info: [{ label: "Backlog", formula: "Backlog = Open jobs with no worksheet", text: "Work done or in progress that hasn't been written up yet." }],
+    { key: "backlog", label: "Unlogged Worksheet", weight: 9, info: [{ label: "Unlogged Worksheet", formula: "Unlogged Worksheet = In Progress jobs with no worksheet", text: "Work done or in progress that hasn't been written up yet." }],
       render: (e) => (e.backlog ? <Pill color={T.warning} bg={T.warningBg}>{e.backlog}</Pill> : <Txt>{0}</Txt>), sortValue: (e) => e.backlog, exportValue: (e) => e.backlog },
-    { key: "flagged", label: "Flagged", weight: 6, info: [
-        { label: "Flagged", formula: "Worksheet AND no MoM  ·  or  ·  MoM / document AND no worksheet", text: "Jobs whose paperwork doesn't match." },
-        { label: "Never flagged", text: "Jobs with a file in their Attachments field." },
-      ],
-      render: (e) => (e.flagged ? <Pill color={T.danger} bg={T.dangerBg}>{e.flagged}</Pill> : <Txt>{0}</Txt>), sortValue: (e) => e.flagged, exportValue: (e) => e.flagged },
-    { key: "hours", label: "Hours", weight: 6, info: [{ label: "Hours", formula: "Hours = Σ Total Working Hours (timesheets of their jobs)", text: "A job with two engineers counts its hours for each." }],
+    { key: "hours", label: "Total Working Hours", weight: 9, info: [{ label: "Total Working Hours", formula: "Total Working Hours = Σ Total Working Hours (timesheets of their jobs)", text: "A job with two engineers counts its hours for each." }],
       render: (e) => (e.hours ? <span className="col-value">{fmtNum(e.hours, 0)}</span> : <Txt>{null}</Txt>), sortValue: (e) => e.hours, exportValue: (e) => Math.round(e.hours) },
-    { key: "last", label: "Last Worksheet", weight: 9, exportWidth: 16, info: [{ label: "Last Worksheet", formula: "Last Worksheet = Today − date of latest worksheet", text: `Red when the engineer has never filed one, or the last was more than ${STUCK_DAYS} days ago.` }],
+    { key: "last", label: "Last Logged In", weight: 9, exportWidth: 16, info: [{ label: "Last Logged In", formula: "Last Logged In = Today − date of latest worksheet", text: `Red when the engineer has never filed one, or the last was more than ${STUCK_DAYS} days ago.` }],
       render: (e) => (e.lastLoggedDays === null
         ? <span style={{ fontSize: 11.5, fontWeight: 700, color: T.danger }}>Never</span>
         : <span style={{ fontSize: 11.5, fontWeight: e.lastLoggedDays > STUCK_DAYS ? 700 : 500, color: e.lastLoggedDays > STUCK_DAYS ? T.danger : T.textSecondary }}>{e.lastLoggedDays}d ago</span>),
@@ -418,26 +529,26 @@ export function ReportTab({ model, userMap }) {
       render: (w) => <TagList items={w.spares} color="#7C3AED" />, sortValue: (w) => w.spares.length, exportValue: (w) => w.spares.join(", ") },
     { key: "odoo", label: "Odoo Link", exportOnly: true, exportValue: (w) => odooLinkCell(w.caseId), exportWidth: 14 },
   ];
-  // Per-engineer visit stats: slowest average visit first
+  // Per-engineer visit stats: most visit days first
   const hoursByEngineer = Object.fromEntries(engineerHoursStats(timesheets).map((h) => [h.id, h]));
-  const visitByEngineer = engineerVisitStats(worksheets, userMap).map((e) => ({ ...e, avgHours: hoursByEngineer[e.id]?.avgHours ?? null }));
+  const visitByEngineer = engineerVisitStats(worksheets, userMap).map((e) => ({ ...e, totalHours: hoursByEngineer[e.id]?.totalHours ?? null }));
   const dayCell = (v) => (v === null ? <Txt>{null}</Txt> : <span className="col-value">{Number.isInteger(v) ? v : fmtNum(v, 1)}</span>);
   const visitEngineerColumns = [
     { key: "name", label: "Engineer", weight: 18, exportWidth: 30, render: (e) => <TitleCell title={e.name} />, sortValue: (e) => e.name, exportValue: (e) => e.name },
     { key: "visits", label: "Visits", weight: 6, info: [{ label: "Visits", formula: "Visits = number of the engineer's worksheets", text: "A worksheet counts for its Assigned Service Engineer, else the job's Service Engineers." }],
       render: (e) => <span className="col-value">{e.visits}</span>, sortValue: (e) => e.visits },
-    { key: "avg", label: "Avg Days", weight: 8,
+    { key: "days", label: "Total Days", weight: 8,
       info: [
-        { label: "Avg Days", formula: "Avg Days = mean(Visit End − Visit Start + 1)", text: "Both days count, so a same-day visit is 1 day." },
-        { label: "Missing dates", text: "A visit without a start or end date is left out of the average but still counts in Visits." },
+        { label: "Total Days", formula: "Total Days = Σ (Visit End − Visit Start + 1)", text: "Both days count, so a same-day visit is 1 day." },
+        { label: "Missing dates", text: "A visit without a start or end date is left out of the total but still counts in Visits." },
       ],
-      render: (e) => dayCell(e.avgDays), sortValue: (e) => e.avgDays ?? -1, exportValue: (e) => (e.avgDays === null ? "" : Number(e.avgDays.toFixed(1))) },
-    { key: "avgHours", label: "Avg Hours", weight: 8,
+      render: (e) => dayCell(e.totalDays), sortValue: (e) => e.totalDays ?? -1, exportValue: (e) => e.totalDays ?? "" },
+    { key: "hours", label: "Total Hours", weight: 8,
       info: [
-        { label: "Avg Hours", formula: "Avg Hours = Σ Total Working Hours ÷ timesheet entries", text: "From the engineer's own timesheets, not the visit dates." },
+        { label: "Total Hours", formula: "Total Hours = Σ Total Working Hours", text: "From the engineer's own timesheets, not the visit dates." },
         { label: "Whose timesheets", text: "The timesheet's Submitted By, else the job's Service Engineers. Blank when the engineer has none." },
       ],
-      render: (e) => dayCell(e.avgHours), sortValue: (e) => e.avgHours ?? -1, exportValue: (e) => (e.avgHours === null ? "" : Number(e.avgHours.toFixed(1))) },
+      render: (e) => dayCell(e.totalHours), sortValue: (e) => e.totalHours ?? -1, exportValue: (e) => (e.totalHours === null ? "" : Number(e.totalHours.toFixed(1))) },
     { key: "problems", label: "Problems Identified", weight: 9, info: [{ label: "Problems Identified", formula: "Visits with ≥ 1 problem tag, of all Visits", text: "Shown as “N of Visits”. Colour: red (none) → green (all)." }],
       render: (e) => <HeatPct value={e.problemRate}>{e.withProblems} of {e.visits}</HeatPct>, sortValue: (e) => e.withProblems, exportValue: (e) => e.withProblems },
     { key: "spares", label: "Spare Parts Used", weight: 16, exportWidth: 50, info: [{ label: "Spare Parts Used", formula: "Distinct parts across the engineer's worksheets", text: "Each part listed once; sorting uses how many different parts." }],
@@ -445,6 +556,28 @@ export function ReportTab({ model, userMap }) {
     { key: "type", label: "Main Service Type", weight: 11, exportWidth: 20, info: [{ label: "Main Service Type", formula: "Most frequent Service Type on their worksheets", text: "Shows what kind of work the engineer mostly does." }],
       render: (e) => <Pill color={colorFor(e.topServiceType, SERVICE_TYPE_COLORS)}>{e.topServiceType}</Pill>, sortValue: (e) => e.topServiceType, exportValue: (e) => e.topServiceType },
     { key: "odoo", label: "Odoo Link", exportOnly: true, exportWidth: 14, exportValue: (e) => ({ text: "Open in Odoo", hyperlink: odooEmployeeUrl(e.id) }) },
+  ];
+
+  // ── Customer insights (customer = the job's Customer field) ──
+  const customerColumns = [
+    { key: "name", label: "Customer", weight: 22, exportWidth: 40, render: (c) => <TitleCell title={c.name} />, sortValue: (c) => c.name, exportValue: (c) => c.name },
+    { key: "jobs", label: "Jobs", weight: 6, info: [{ label: "Jobs", formula: "Jobs = cases with this Customer", text: "Cancelled jobs excluded. The table sorts by this, highest first." }],
+      render: (c) => <span className="col-value">{c.jobs}</span>, sortValue: (c) => c.jobs },
+    { key: "open", label: "In Progress", weight: 7, info: [{ label: "In Progress", formula: "In Progress = jobs not Completed / Done" }], render: (c) => <Txt>{c.open}</Txt>, sortValue: (c) => c.open },
+    { key: "completed", label: "Completed", weight: 7, info: [{ label: "Completed", formula: "Completed = Jobs − In Progress" }], render: (c) => <Txt>{c.completed}</Txt>, sortValue: (c) => c.completed },
+    { key: "rate", label: "Logged Worksheet", weight: 9, exportWidth: 16, info: [{ label: "Logged Worksheet", formula: "Logged ÷ Jobs × 100 (Logged = jobs with ≥ 1 worksheet)", text: "Red (0%) → green (100%)." }],
+      render: (c) => <HeatPct value={pct(c.logged, c.jobs)}>{c.logged}/{c.jobs}</HeatPct>, sortValue: (c) => c.rate, exportValue: (c) => `${c.logged} of ${c.jobs} (${pct(c.logged, c.jobs)}%)` },
+    { key: "hours", label: "Total Working Hours", weight: 9, info: [{ label: "Total Working Hours", formula: "Σ Total Working Hours (timesheets of this customer's jobs)" }],
+      render: (c) => (c.hours ? <span className="col-value">{fmtNum(c.hours, 0)}</span> : <Txt>{null}</Txt>), sortValue: (c) => c.hours, exportValue: (c) => Math.round(c.hours) },
+    { key: "visits", label: "Visits", weight: 6, info: [{ label: "Visits", formula: "Visits = worksheets on this customer's jobs" }],
+      render: (c) => (c.visits ? <span className="col-value">{c.visits}</span> : <Txt>{null}</Txt>), sortValue: (c) => c.visits },
+    { key: "days", label: "Visit Days", weight: 7, info: [{ label: "Visit Days", formula: "Σ (Visit End − Visit Start + 1) over the jobs' worksheets", text: "Visits missing a date are left out." }],
+      render: (c) => (c.visitDays ? <span className="col-value">{c.visitDays}</span> : <Txt>{null}</Txt>), sortValue: (c) => c.visitDays },
+    { key: "problem", label: "Top Problem Type", weight: 12, exportWidth: 24, info: [{ label: "Top Problem Type", formula: "Most frequent Problem Type on this customer's jobs" }],
+      render: (c) => <Txt>{c.topProblem}</Txt>, sortValue: (c) => c.topProblem },
+    { key: "regions", label: "Region", weight: 10, exportWidth: 24, render: (c) => <Txt>{c.regions.join(", ")}</Txt>, sortValue: (c) => c.regions.join(", "), exportValue: (c) => c.regions.join(", ") },
+    { key: "last", label: "Last Job", weight: 8, info: [{ label: "Last Job", formula: "Last Job = Today − Created On of their newest job" }],
+      render: (c) => <Txt>{c.lastJobDays === null ? null : `${c.lastJobDays}d ago`}</Txt>, sortValue: (c) => c.lastJobDays ?? Infinity, exportValue: (c) => c.lastJobDays ?? "" },
   ];
 
   const empty = (text) => <div style={{ color: T.textMuted, fontSize: 12, textAlign: "center", padding: "18px 0" }}>{text}</div>;
@@ -503,8 +636,8 @@ export function ReportTab({ model, userMap }) {
           title="Engineer Ranking & Workload"
           columns={engineerColumns}
           rows={r.engineers}
-          storageKey="adage_fsm_report_engineer_ranking_cols_v1"
-          defaultSort={{ key: "rate", dir: "asc" }}
+          storageKey="adage_fsm_report_engineer_ranking_cols_v2"
+          defaultSort={{ key: "rate", dir: "desc" }}
           searchText={(e) => e.name}
           searchPlaceholder="Search engineer..."
           onRowClick={(e) => setRankEngineer((v) => (v === e.id ? null : e.id))}
@@ -513,10 +646,10 @@ export function ReportTab({ model, userMap }) {
           maxHeight={420}
           emptyText="No engineers assigned."
           toolbar={<span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: T.textMuted }}>Click an engineer to see their jobs <InfoDot text={[
-            { label: "Ranking", formula: "Report Rate = Worksheets logged / Jobs assigned", text: "Sorted worst rate first (lifetime) — an engineer who never files a report sorts to the top no matter how many jobs they've closed." },
-            { label: "Workload", formula: "Assigned = lifetime jobs · Open = jobs in flight now", text: "Assigned is their total-ever caseload; Open is what's actually on their plate today." },
-            { label: "Backlog", formula: "Backlog = Open jobs with no worksheet", text: "Work done or in progress that hasn't been written up yet." },
-            { label: "Last Worksheet", formula: "Last Worksheet = Today − date of latest worksheet", text: `Red when the engineer has never filed one, or the last was more than ${STUCK_DAYS} days ago.` },
+            { label: "Ranking", formula: "Report Rate = Worksheets logged / Jobs assigned", text: "Sorted highest rate first (lifetime); click the header again to see the lowest first." },
+            { label: "Workload", formula: "Assigned = lifetime jobs · In Progress = jobs in flight now", text: "Assigned is their total-ever caseload; In Progress is what's actually on their plate today." },
+            { label: "Unlogged Worksheet", formula: "Unlogged Worksheet = In Progress jobs with no worksheet", text: "Work done or in progress that hasn't been written up yet." },
+            { label: "Last Logged In", formula: "Last Logged In = Today − date of latest worksheet", text: `Red when the engineer has never filed one, or the last was more than ${STUCK_DAYS} days ago.` },
             { label: "Sort & drill in", text: "Click any column header to re-sort, or click an engineer's row to list their jobs below." },
           ]} /></span>}
         />
@@ -562,14 +695,63 @@ export function ReportTab({ model, userMap }) {
         return jobsTable(`Open jobs waiting ${waitBucket} · ${plural(rows.length, "job")}`, rows, `field-service-waiting-${waitBucket}`, () => setWaitBucket(null), "adage_fsm_report_engineer_jobs_cols_v2");
       })()}
 
+      {/* ── Customer insights ── */}
+      <SectionLabel right={<ViewSwitch value={custView} onChange={setCustView} options={[{ value: "bar", label: "Bar Graph" }, { value: "grid", label: "Grid" }]} />}>Customer Insights</SectionLabel>
+      {custView === "bar" && (() => {
+        const m = CUSTOMER_METRICS.find((x) => x.value === custMetric);
+        const partLabel = m.parts?.find((p) => p.key === custPart)?.label;
+        return (
+          <Panel grow={false} style={{ marginBottom: 10 }} title={`Top ${custTop} Customers · ${m.label}${partLabel ? ` · ${partLabel}` : ""}`}
+            right={<div className="no-print" style={{ display: "flex", gap: 6 }}>
+              <FilterSelect value={custMetric} onChange={(v) => { setCustMetric(v); setCustPart(null); }} options={CUSTOMER_METRICS} prefix="By: " width={200} />
+              <FilterSelect value={custTop} onChange={setCustTop} options={[10, 15, 20].map((n) => ({ value: n, label: `Top ${n}` }))} width={90} />
+            </div>}
+            info={[
+              { label: "Bars", text: "One bar per customer (the job's Customer field), largest first. Pick what to rank by and how many to show. Cancelled jobs excluded." },
+              { label: "Jobs", formula: "Jobs = Completed + In Progress", text: "Click Completed or In progress above the bars to rank by only that; click it again for both." },
+              { label: "Visits (Worksheets)", formula: "Jobs with ≥ 1 worksheet + jobs without one", text: "Click With worksheet or Without worksheet to rank by only that." },
+              { label: "Visit Days", formula: "Σ (Visit End − Visit Start + 1) over the jobs' worksheets" },
+              { label: "Working Hours", formula: "Σ Total Working Hours (timesheets of their jobs)" },
+              { label: "Drill in", text: "Hover a bar for the customer's summary; click it to list their jobs." },
+            ]}>
+            <CustomerBars customers={r.customers} metric={custMetric} part={custPart} onPart={setCustPart} top={custTop} activeKey={custPick} onPick={(k) => setCustPick((v) => (v === k ? null : k))} />
+          </Panel>
+        );
+      })()}
+      {custView === "grid" && <div style={{ marginBottom: 10 }}>
+        <DataTable
+          title="Customer Insights"
+          columns={customerColumns}
+          rows={r.customers}
+          storageKey="adage_fsm_report_customers_cols_v2"
+          defaultSort={{ key: "jobs", dir: "desc" }}
+          searchText={(c) => [c.name, c.topProblem, ...c.regions].join(" ")}
+          searchPlaceholder="Search customer..."
+          onRowClick={(c) => setCustPick((v) => (v === c.name ? null : c.name))}
+          rowStyle={(c) => (c.name === custPick ? { background: T.accentBg } : null)}
+          exportName="field-service-customers"
+          maxHeight={420}
+          emptyText="No jobs."
+          toolbar={<TableHint text="Click a customer to see their jobs" info={[
+            { label: "Customer", text: "The job's Customer field; jobs without one are grouped as No customer. Cancelled jobs excluded." },
+            { label: "Sort", text: "Most jobs first; click any header to re-sort (e.g. by hours or Logged Worksheet)." },
+          ]} />}
+        />
+      </div>}
+      {custPick && (() => {
+        const rows = r.live.filter((c) => (caseCustomer(c) || "No customer") === custPick);
+        const done = rows.filter(isCompleted).length;
+        return jobsTable(`${custPick} · ${plural(rows.length, "job")} (${done} completed, ${rows.length - done} open)`, rows, `field-service-customer-${custPick}`, () => setCustPick(null), "adage_fsm_report_engineer_jobs_cols_v2");
+      })()}
+
       {/* ── Visit analysis ── */}
       <div style={{ marginBottom: 10, marginTop: 18 }}>
         <DataTable
-          title="Visit Analysis by Engineer · slowest visits first"
+          title="Visit Analysis by Engineer · most visit days first"
           columns={visitEngineerColumns}
           rows={visitByEngineer}
-          storageKey="adage_fsm_report_visit_by_engineer_cols_v2"
-          defaultSort={{ key: "avg", dir: "desc" }}
+          storageKey="adage_fsm_report_visit_by_engineer_cols_v3"
+          defaultSort={{ key: "days", dir: "desc" }}
           searchText={(e) => e.name}
           searchPlaceholder="Search engineer..."
           onRowClick={(e) => setVisitEngineer((v) => (v === e.id ? null : e.id))}
@@ -578,10 +760,10 @@ export function ReportTab({ model, userMap }) {
           maxHeight={420}
           emptyText="No worksheets yet."
           toolbar={<TableHint text="Click an engineer to see their jobs" info={[
-            { label: "Avg Days", formula: "Avg Days = mean(Visit End − Visit Start + 1)", text: "Per worksheet, both days counted. Visits missing a date are left out of the average." },
-            { label: "Avg Hours", formula: "Avg Hours = Σ Total Working Hours / timesheet entries", text: "From the engineer's own timesheets (Submitted By, else the job's Service Engineers)." },
+            { label: "Total Days", formula: "Total Days = Σ (Visit End − Visit Start + 1)", text: "Per worksheet, both days counted. Visits missing a date are left out of the total." },
+            { label: "Total Hours", formula: "Total Hours = Σ Total Working Hours", text: "From the engineer's own timesheets (Submitted By, else the job's Service Engineers)." },
             { label: "Problems Identified", formula: "Visits with ≥ 1 problem tag, of all Visits", text: "Red when none of their visits record a problem, green when all do." },
-            { label: "Who a visit counts for", text: "The worksheet's Assigned Service Engineer, else the job's Service Engineers. Sorted slowest average visit first; click a header to re-sort." },
+            { label: "Who a visit counts for", text: "The worksheet's Assigned Service Engineer, else the job's Service Engineers. Sorted most total visit days first; click a header to re-sort." },
           ]} />}
         />
       </div>
@@ -665,7 +847,7 @@ export function ReportTab({ model, userMap }) {
                   title={`Next step · ${plural(a.engineers.length, "engineer")} with 3+ jobs and no worksheet`}
                   columns={engineerColumns}
                   rows={a.engineers}
-                  storageKey="adage_fsm_report_action_silent_cols_v2"
+                  storageKey="adage_fsm_report_action_silent_cols_v3"
                   defaultSort={{ key: "assigned", dir: "desc" }}
                   searchText={(e) => e.name}
                   searchPlaceholder="Search engineer..."
