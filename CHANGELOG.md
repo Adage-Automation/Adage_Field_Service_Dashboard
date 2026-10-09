@@ -48,6 +48,18 @@ noting what changed, why, and how it was verified.
 - Visit Analysis by Engineer: **Avg Days** → **Total Days** (sum of visit days), **Avg Hours** → **Total Hours** (sum of
   Total Working Hours on the engineer's timesheets). Default sort is now total days, descending. `engineerVisitStats`
   returns `totalDays` instead of `avgDays`. Column storage keys bumped for all three tables.
+
+## 2026-10-09 — Report tab: Total Cases KPI row, split from Engineer's Dashboard
+
+- Added a `KpiRow` at the top of the Report tab: Total Cases, Open, Completed, Total Service Engineers,
+  Assigned Engineers — reusing the same `KpiCard`/`KpiRow` components the other tabs already use.
+- **Total Service Engineers** = `hr.employee` records whose manager (`parent_id`) is Samaresh Dey, employee id
+  184. Fetched once in `App.jsx` (`serviceEngineerCount` state, `hr.employee` search_read on
+  `[["parent_id", "=", 184]]`) and passed down as a prop, since it's the full engineer roster, not derivable
+  from case data like the rest of the model. **Assigned Engineers** = `r.engineers.length` (engineers with
+  ≥ 1 case assigned), already computed by `engineerStats`.
+- Added a new `SectionLabel` ("Engineer's Dashboard") above the regions/engineers treemap so it reads as a
+  separate section from the Total Cases row, per a flowchart the user provided.
 - Verified with `npm run build`.
 
 ## 2026-10-09 — Problems & Resolutions: Year / Month / Customer / Problem Type filters

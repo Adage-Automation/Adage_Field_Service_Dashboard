@@ -78,6 +78,7 @@ export default function App() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [toast, setToast]         = useState(null);    // { ok, text }
   const [userMap, setUserMap]     = useState({});
+  const [serviceEngineerCount, setServiceEngineerCount] = useState(0); // employees managed by Samaresh Dey (id 184)
   const [engineerId, setEngineerId] = useState(() => {
     try {
       const stored = localStorage.getItem(ENGINEER_STORAGE_KEY);
@@ -131,6 +132,11 @@ export default function App() {
           (employees || []).forEach((emp) => { map[emp.id] = emp.name; });
         } catch (umErr) { console.warn("employeeMap load error:", umErr); }
       }
+
+      try {
+        const svcEngineers = await fetchOdoo("hr.employee", "search_read", [[["parent_id", "=", 184]]], { fields: ["id"], limit: 5000, context: { lang: "en_US", active_test: false } });
+        setServiceEngineerCount((svcEngineers || []).length);
+      } catch (seErr) { console.warn("service engineer count load error:", seErr); }
 
       setUserMap(map);
       setRaw({ tasks, worksheets, timesheets, specialDates, momAmc, momComm, certs, docSection, problems, spares });
@@ -314,7 +320,7 @@ export default function App() {
               {activeTab === "worksheets" && <WorksheetsTab model={model} userMap={userMap} />}
               {activeTab === "documents"  && <DocumentsTab model={model} userMap={userMap} />}
               {activeTab === "timesheets" && <TimesheetsTab model={model} userMap={userMap} filtered={!!engineerId} />}
-              {activeTab === "report"     && <ReportTab model={model} userMap={userMap} engineerName={engineerName} lastUpdated={lastUpdated} />}
+              {activeTab === "report"     && <ReportTab model={model} userMap={userMap} engineerName={engineerName} lastUpdated={lastUpdated} serviceEngineerCount={serviceEngineerCount} />}
             </div>
           </ErrorBoundary>
         )}

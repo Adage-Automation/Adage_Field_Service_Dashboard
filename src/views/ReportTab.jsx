@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { T } from "../constants/theme";
 import { SERVICE_TYPE_COLORS, CHART_COLORS, colorFor } from "../constants/colors";
-import { tally, engineerStats, customerStats,engineerVisitStats, engineerHoursStats, wsEngineerIds, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
-import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterSelect, FilterChip, TitleCell, Txt, BarList, InteractiveDonut, InfoDot, fmtNum, pct, plural } from "../components/ui";
+import { tally, engineerStats, customerStats, engineerVisitStats, engineerHoursStats, wsEngineerIds, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
+import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterSelect, FilterChip, TitleCell, Txt, BarList, InteractiveDonut, InfoDot, KpiCard, KpiRow, fmtNum, pct, plural } from "../components/ui";
 import { SectionLabel, StagePill, YesNo, EngineerPills, caseCustomer, engineerNames, fmtDay, openCase, odooLinkCell } from "./shared";
 import { TagList } from "./WorksheetsTab";
 import { odooTaskUrl, odooEmployeeUrl } from "../lib/odoo";
@@ -296,10 +296,10 @@ function MonthlyBars({ months, activeKey, onPick, height = 190 }) {
   );
 }
 
-export function ReportTab({ model, userMap }) {
+export function ReportTab({ model, userMap, serviceEngineerCount }) {
   const { cases, worksheets, timesheets } = model;
-  const [tmRegion, setTmRegion] = useState(null);   // treemap drill-down: region → engineer
-  const [tmEngineer, setTmEngineer] = useState(null);
+  const [tmGroupBy, setTmGroupBy] = useState("engineer"); // treemap grouping: engineer (default) | customer | region
+  const [tmKey, setTmKey] = useState(null);         // clicked tile within the current grouping
   const [tmPeek, setTmPeek] = useState(null);       // tile under the mouse / keyboard focus (detail strip)
   const [fYear, setFYear] = useState([]);           // treemap filters (Created On year / month, customer, problem type)
   const [fMonth, setFMonth] = useState([]);
@@ -373,10 +373,15 @@ export function ReportTab({ model, userMap }) {
     const problemTypes = tally(live.map((c) => c.x_studio_problem_type || "Not set"))
       .map((t, i) => ({ ...t, color: t.key === "Not set" ? "#94A3B8" : CHART_COLORS[i % CHART_COLORS.length] }));
 
-    return { live, engineers, customers: customerStats(live), backlog, months, waiting, oldestWaiting, recurring, problemTypes, actions };
+    return { live, open, engineers, customers: customerStats(live), backlog, months, waiting, oldestWaiting, recurring, problemTypes, actions };
   }, [cases, worksheets, userMap]);
 
-  // Treemap: regions (size = jobs, colour = % completed) → engineers in that region → their jobs
+  // Treemap: tiles = jobs grouped by engineer (default), customer or region; size = jobs, colour = % completed.
+  const GROUP_OPTIONS = [
+    { value: "engineer", label: "Service Engineer" },
+    { value: "customer", label: "Customer" },
+    { value: "region", label: "Region" },
+  ];
   const regionOf = (c) => c.x_studio_regions || "No region";
   const yearOf = (c) => (c.createdISO || "").slice(0, 4);
   const monthOf = (c) => (c.createdISO ? MONTHS[Number(c.createdISO.slice(5, 7)) - 1] : "");
@@ -391,12 +396,13 @@ export function ReportTab({ model, userMap }) {
     customer: uniqSorted(r.live.map(caseCustomer)),
     problem: uniqSorted(r.live.map((c) => c.x_studio_problem_type)),
   };
-  const jobFilters = (y, m, cu, p) => [
-    { key: "year", label: "Year", options: jobOptions.year, selected: y[0], onChange: y[1] },
-    { key: "month", label: "Month", options: jobOptions.month, selected: m[0], onChange: m[1] },
-    { key: "customer", label: "Customer", options: jobOptions.customer, selected: cu[0], onChange: cu[1], searchable: true },
-    { key: "problem", label: "Problem Type", options: jobOptions.problem, selected: p[0], onChange: p[1], searchable: true },
-  ];
+  // Returns a keyed map rather than a fixed array so each panel can order the filters it shows.
+  const jobFilters = (y, m, cu, p) => ({
+    year: { key: "year", label: "Year", options: jobOptions.year, selected: y[0], onChange: y[1] },
+    month: { key: "month", label: "Month", options: jobOptions.month, selected: m[0], onChange: m[1] },
+    customer: { key: "customer", label: "Customer", options: jobOptions.customer, selected: cu[0], onChange: cu[1], searchable: true },
+    problem: { key: "problem", label: "Problem Type", options: jobOptions.problem, selected: p[0], onChange: p[1], searchable: true },
+  });
   const tmCases = r.live.filter((c) => matchesJob(c, fYear, fMonth, fCustomer, fProblem));
   // Tile = jobs (size) + completion (colour) + working hours, open / late jobs and worksheets.
   // A job with two engineers counts (with its hours) for each of them.
@@ -409,24 +415,19 @@ export function ReportTab({ model, userMap }) {
     const hint = [extra, `${fmtNum(hours, 0)} h worked`, `${open.length} open${late ? ` (${late} late)` : ""}`, plural(reports, "worksheet")].filter(Boolean).join(" · ");
     return { key, label, value: jobs.length, completed, rate: pct(completed, jobs.length), hint };
   };
-  const tmItems = !tmRegion
-    ? Object.entries(tmCases.reduce((m, c) => ((m[regionOf(c)] = m[regionOf(c)] || []).push(c), m), {}))
-        .map(([k, jobs]) => tile(k, k, jobs, plural(new Set(jobs.flatMap((c) => c.engineerIds)).size, "engineer")))
-    : (() => {
-        const jobs = tmCases.filter((c) => regionOf(c) === tmRegion);
-        const ids = [...new Set(jobs.flatMap((c) => (c.engineerIds.length ? c.engineerIds : ["none"])))];
-        return ids.map((id) => tile(String(id), id === "none" ? "No engineer" : userMap[id] || `Employee #${id}`, jobs.filter((c) => (id === "none" ? !c.engineerIds.length : c.engineerIds.includes(id)))));
-      })();
-  const tmJobs = tmRegion && tmEngineer
-    ? tmCases.filter((c) => regionOf(c) === tmRegion && (tmEngineer === "none" ? !c.engineerIds.length : c.engineerIds.includes(Number(tmEngineer))))
-    : [];
-  const tmEngineerName = tmItems.find((t) => t.key === tmEngineer)?.label;
-  // Region → its engineers; engineer → their jobs; the same engineer again → back to all regions.
-  const tmSelect = (key) => {
-    if (!tmRegion) return setTmRegion(key);
-    if (key === tmEngineer) { setTmEngineer(null); setTmRegion(null); return; }
-    setTmEngineer(key);
-  };
+  // A job groups under each of its engineers when grouping by engineer; one key otherwise.
+  const tmGroupKeys = (c) => (tmGroupBy === "engineer" ? (c.engineerIds.length ? c.engineerIds.map(String) : ["none"])
+    : tmGroupBy === "customer" ? [caseCustomer(c) || "No customer"] : [regionOf(c)]);
+  const tmKeyLabel = (key) => (tmGroupBy === "engineer" ? (key === "none" ? "No engineer" : userMap[Number(key)] || `Employee #${key}`) : key);
+  const tmExtra = (jobs) => (tmGroupBy === "engineer" ? plural(new Set(jobs.map(caseCustomer).filter(Boolean)).size, "customer")
+    : plural(new Set(jobs.flatMap((c) => c.engineerIds)).size, "engineer"));
+  const tmItems = Object.entries(tmCases.reduce((m, c) => (tmGroupKeys(c).forEach((k) => (m[k] = m[k] || []).push(c)), m), {}))
+    .map(([k, jobs]) => tile(k, tmKeyLabel(k), jobs, tmExtra(jobs)));
+  const tmJobs = tmKey ? tmCases.filter((c) => tmGroupKeys(c).includes(tmKey)) : [];
+  const tmSelectedLabel = tmItems.find((t) => t.key === tmKey)?.label;
+  const tmSelect = (key) => setTmKey((v) => (v === key ? null : key));
+  const tmGroupLabel = GROUP_OPTIONS.find((o) => o.value === tmGroupBy).label;
+  const tmGroupPlural = tmGroupBy === "region" ? "regions" : tmGroupBy === "customer" ? "customers" : "engineers";
   const crumb = (label, onClick) => <button onClick={onClick} style={{ border: "none", background: "none", padding: 0, color: T.accent, fontWeight: 600, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>{label}</button>;
   const jobsTable = (title, rows, exportName, onClose, storageKey) => (
     <div style={{ marginBottom: 10 }}>
@@ -507,9 +508,13 @@ export function ReportTab({ model, userMap }) {
   const wsEngineerNames = (w) => engineerNames(wsEngineers(w), userMap);
   const visitRows = problemRows.filter((w) => matchesJob(w.case, pYear, pMonth, pCustomer, pProblem)
     && (!pEngineer.length || wsEngineerNames(w).some((n) => pEngineer.includes(n))));
+  const pJobFilters = jobFilters([pYear, setPYear], [pMonth, setPMonth], [pCustomer, setPCustomer], [pProblem, setPProblem]);
   const visitFilters = [
     { key: "engineer", label: "Engineer", options: uniqSorted(problemRows.flatMap(wsEngineerNames)), selected: pEngineer, onChange: setPEngineer, searchable: true },
-    ...jobFilters([pYear, setPYear], [pMonth, setPMonth], [pCustomer, setPCustomer], [pProblem, setPProblem]),
+    pJobFilters.customer,
+    pJobFilters.problem,
+    pJobFilters.month,
+    pJobFilters.year,
   ];
   const visitColumns = [
     { key: "engineer", label: "Engineer", weight: 11, exportWidth: 28,
@@ -584,25 +589,36 @@ export function ReportTab({ model, userMap }) {
 
   return (
     <div className="report">
-      {/* ── Treemap: regions → engineers → jobs ── */}
-      <SectionLabel>Regions &amp; Engineers · Who Is Completing the Work</SectionLabel>
-      <Panel grow={false} style={{ marginBottom: 10 }} title="Regions → engineers · completed vs assigned"
+      {/* ── Total cases overview ── */}
+      <KpiRow>
+        <KpiCard label="Total Cases" value={fmtNum(r.live.length)} tone="accent" info="Live jobs (is_fsm), cancelled excluded." />
+        <KpiCard label="Open" value={fmtNum(r.open.length)} info="Open jobs: not in a Completed / Done stage." />
+        <KpiCard label="Completed" value={fmtNum(r.live.length - r.open.length)} tone="success" info="Live jobs whose stage is Completed / Done." />
+        <KpiCard label="Total Service Engineers" value={fmtNum(serviceEngineerCount)} tone="warning" info="hr.employee records reporting to Samaresh Dey (the Service Manager)." />
+        <KpiCard label="Assigned Engineers" value={fmtNum(r.engineers.length)} info="Of those, engineers with at least one case assigned to them." />
+      </KpiRow>
+
+      {/* ── Engineer's dashboard: treemap, ranking & visit analysis ── */}
+      <SectionLabel>Engineer's Dashboard</SectionLabel>
+      <Panel grow={false} style={{ marginBottom: 10 }} title={`${tmGroupLabel} · completed vs assigned`}
         info={[
-          { label: "Tile size", formula: "Size = number of jobs (cancelled jobs excluded)", text: "Level 1 = regions; level 2 = the engineers in the clicked region. A job with two engineers counts for each." },
+          { label: "Tile size", formula: "Size = number of jobs (cancelled jobs excluded)", text: "Tiles group jobs by the picked dimension — Service Engineer, Customer or Region. A job with two engineers counts for each when grouped by engineer." },
           { label: "Tile colour & pointer", formula: "Completion % = Completed jobs / All jobs × 100", text: "Red at 0% → amber → green at 100%. Completed = stage name contains Completed or Done." },
-          { label: "Tile details", formula: "Hours = Σ Total Working Hours on the tile's jobs", text: "Open = not completed; late = open and created more than 60 days ago; worksheets = jobs with at least one worksheet." },
-          { label: "Navigate", text: "Click a region → its engineers → an engineer to list their jobs; click the same engineer again to return to all regions. Year / Month / Customer / Problem Type filters apply to the treemap only." },
+          { label: "Tile details", formula: "Hours = Σ Total Working Hours on the tile's jobs", text: `Open = not completed; late = open and created more than ${LATE_DAYS} days ago; worksheets = jobs with at least one worksheet.` },
+          { label: "Navigate", text: "Click a tile to list its jobs; click it again to go back to all. Switch the grouping with the dropdown. Year / Month / Customer / Problem Type filters apply to the treemap only." },
         ]}>
-        <div className="no-print" style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: T.textMuted, marginBottom: 10, padding: "6px 10px", borderRadius: 8, background: T.bgInput }}>
-          {crumb("All regions", () => { setTmRegion(null); setTmEngineer(null); })}
-          {tmRegion && <>›{crumb(tmRegion, () => setTmEngineer(null))}</>}
-          {tmEngineerName && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{tmEngineerName}</span></>}
+        <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          <FilterSelect value={tmGroupBy} onChange={(v) => { setTmGroupBy(v); setTmKey(null); setTmPeek(null); }} options={GROUP_OPTIONS} prefix="Group by: " width={200} />
+          <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: T.textMuted, padding: "6px 10px", borderRadius: 8, background: T.bgInput }}>
+            {crumb(`All ${tmGroupPlural}`, () => setTmKey(null))}
+            {tmSelectedLabel && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{tmSelectedLabel}</span></>}
+          </div>
         </div>
         {(() => {
-          const shown = tmPeek || tmItems.find((t) => t.key === tmEngineer);
+          const shown = tmPeek || tmItems.find((t) => t.key === tmKey);
           const levelJobs = tmItems.reduce((sum, t) => sum + t.value, 0);
           const levelDone = tmItems.reduce((sum, t) => sum + t.completed, 0);
-          const point = shown || { label: tmRegion || "All regions", rate: pct(levelDone, levelJobs), completed: levelDone, value: levelJobs };
+          const point = shown || { label: `All ${tmGroupPlural}`, rate: pct(levelDone, levelJobs), completed: levelDone, value: levelJobs };
           return (
             <div aria-live="polite" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: 12, color: T.textSecondary }}>
               <div style={{ width: 260, flexShrink: 0 }}>
@@ -619,16 +635,16 @@ export function ReportTab({ model, userMap }) {
                 </div>
               </div>
               <span style={{ flex: 1, minWidth: 240, padding: "6px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard }}>
-                {shown ? <><strong style={{ color: T.textPrimary }}>{shown.label}</strong>: {shown.completed} of {shown.value} completed ({shown.rate}%) · {shown.hint}{!tmPeek && tmEngineer ? " · Click this engineer again to go back to all regions." : ""}</>
-                  : <><strong style={{ color: T.textPrimary }}>{point.label}</strong>: {point.completed} of {point.value} cases completed ({point.rate}%). Hover or tab to a {tmRegion ? "engineer" : "region"} to move the pointer; click or press Enter to {tmRegion ? "list their jobs" : "see its engineers"}.</>}
+                {shown ? <><strong style={{ color: T.textPrimary }}>{shown.label}</strong>: {shown.completed} of {shown.value} completed ({shown.rate}%) · {shown.hint}{!tmPeek && tmKey ? " · Click this tile again to go back to all." : ""}</>
+                  : <><strong style={{ color: T.textPrimary }}>{point.label}</strong>: {point.completed} of {point.value} cases completed ({point.rate}%). Hover or tab to a tile to move the pointer; click or press Enter to list its jobs.</>}
               </span>
             </div>
           );
         })()}
-        <FilterBar count={tmCases.length} noun="job" filters={jobFilters([fYear, setFYear], [fMonth, setFMonth], [fCustomer, setFCustomer], [fProblem, setFProblem])} />
-        {tmItems.length ? <Treemap items={tmItems} selectedKey={tmEngineer} onSelect={(k) => { setTmPeek(null); tmSelect(k); }} onPeek={setTmPeek} /> : empty("No jobs match these filters")}
+        <FilterBar count={tmCases.length} noun="job" filters={Object.values(jobFilters([fYear, setFYear], [fMonth, setFMonth], [fCustomer, setFCustomer], [fProblem, setFProblem]))} />
+        {tmItems.length ? <Treemap items={tmItems} selectedKey={tmKey} onSelect={(k) => { setTmPeek(null); tmSelect(k); }} onPeek={setTmPeek} /> : empty("No jobs match these filters")}
       </Panel>
-      {tmJobs.length > 0 && jobsTable(`${tmEngineerName} · ${tmRegion} · ${plural(tmJobs.length, "job")} (${tmJobs.filter(isCompleted).length} completed)`, tmJobs, `field-service-jobs-${tmRegion}-${tmEngineerName}`, () => setTmEngineer(null), "adage_fsm_report_engineer_jobs_cols_v2")}
+      {tmJobs.length > 0 && jobsTable(`${tmSelectedLabel} · ${plural(tmJobs.length, "job")} (${tmJobs.filter(isCompleted).length} completed)`, tmJobs, `field-service-jobs-${tmGroupBy}-${tmSelectedLabel}`, () => setTmKey(null), "adage_fsm_report_engineer_jobs_cols_v2")}
 
       {/* ── Engineer ranking & workload ── */}
       <div style={{ marginBottom: 10, marginTop: 18 }}>
