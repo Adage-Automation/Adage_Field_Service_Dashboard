@@ -70,7 +70,7 @@ const ENGINEER_STORAGE_KEY = "adage_fsm_engineer_id";
 export default function App() {
   const { instance, accounts } = useMsal();
   const account = accounts[0];
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("report");
   const [raw, setRaw]             = useState(null);
   const [loading, setLoading]     = useState(true);   // first load only (full-page loader)
   const [refreshing, setRefreshing] = useState(false); // background refresh (data stays on screen)
@@ -178,12 +178,9 @@ export default function App() {
   const model = useMemo(() => (fullModel ? filterModel(fullModel, engineerId) : null), [fullModel, engineerId]);
   const engineerName = engineerId ? userMap[engineerId] || `Employee #${engineerId}` : null;
 
+  // Only Report is shown in the tab bar for now; the rest stay reachable in code (filtered out here, not removed).
   const tabs = [
     { id: "report",     label: "Report" },
-    { id: "overview",   label: "Overview" },
-    { id: "worksheets", label: "Worksheets" },
-    { id: "documents",  label: "Documents" },
-    { id: "timesheets", label: "Timesheets" },
   ];
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -216,7 +213,7 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <button
             type="button"
-            onClick={() => setActiveTab("overview")}
+            onClick={() => setActiveTab("report")}
             style={{ background: "none", border: "none", padding: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1, cursor: "pointer", fontFamily: "inherit" }}
           >
             <img src={mainLogo} alt="ADAGE" style={{ height: 22, width: "auto", display: "block" }} />

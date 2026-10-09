@@ -279,7 +279,7 @@ export function OverviewTab({ model, userMap }) {
       ) : <Pill color={T.success} bg={T.successBg}>clear</Pill>),
       sortValue: (p) => p.backlog, exportValue: (p) => p.backlog },
     { key: "doneUnlogged", label: "Done, No Worksheet", weight: 9,
-      info: "Cases already Completed that never got a worksheet: missing service reports.",
+      info: "Cases already Completed that never got a worksheet.",
       render: (p) => (p.completedUnlogged ? <Pill color={T.danger} bg={T.dangerBg}>{p.completedUnlogged}</Pill> : <Txt>{0}</Txt>),
       sortValue: (p) => p.completedUnlogged },
     { key: "flagged", label: "Flagged", weight: 6, info: "Cases with a paperwork mismatch (worksheet without MoM, or MoM/document without worksheet).",
@@ -339,7 +339,7 @@ export function OverviewTab({ model, userMap }) {
           sub={`of ${openCases.length} open cases${oldestBacklog?.ageDays != null ? ` · oldest ${oldestBacklog.ageDays}d` : ""}`}
           onClick={() => { setLoggedFilter((v) => (v === "backlog" ? "all" : "backlog")); scrollTo(recordsRef); }} active={loggedFilter === "backlog"} />
         <KpiCard label="Done, No Worksheet" value={fmtNum(completedUnlogged.length)} tone="danger"
-          info="Completed cases that never got a worksheet. The service report is missing. Click to list them."
+          info="Completed cases that never got a worksheet. Click to list them."
           sub={`${pct(completedUnlogged.length, cases.length - openCases.length)}% of completed cases`}
           onClick={() => { setLoggedFilter("not_logged"); setFilterStage(uniq(completedUnlogged.map((c) => c.stage_id?.[1]))); scrollTo(recordsRef); }} />
         <KpiCard label="Flagged Records" value={fmtNum(flagged.length)} tone="danger"

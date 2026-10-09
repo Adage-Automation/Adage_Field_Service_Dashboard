@@ -3,6 +3,24 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-09 — "Service Report" renamed to "Worksheet" throughout the Report/Overview tabs
+
+- Every user-facing label, tooltip, empty-state and drill-down title that said "service report(s)" now says
+  "worksheet(s)" — Engineer Ranking's "Reports · Rate" / "Last Report" columns are now "Worksheets · Rate" /
+  "Last Worksheet"; the Service Type donut's unit changed from "reports" to "worksheets". `docs/metrics.md`
+  updated to match. Odoo field names (e.g. "Service Engineers") are untouched — only report-text wording.
+
+## 2026-10-09 — Engineer Ranking formula wording
+
+- The "Ranking" formula in Engineer Ranking & Workload's info tooltip now reads "Report Rate = Worksheets
+  logged / Jobs assigned" (was "Reports Logged ÷ Jobs Assigned").
+
+## 2026-10-09 — Only the Report tab is shown; it's the default on load
+
+- Header tab bar now lists only "Report" (`tabs` array in App.jsx filtered down); Overview/Worksheets/
+  Documents/Timesheets stay in the code (components + routes untouched) but aren't reachable from the nav.
+  Default `activeTab` and the logo's "go home" click both changed from "overview" to "report".
+
 ## 2026-10-08 — Visit Analysis by Engineer: spare parts listed by name
 
 - Spare Parts Used now lists the parts themselves (distinct, as tags) instead of "N of visits"; sorts by how many

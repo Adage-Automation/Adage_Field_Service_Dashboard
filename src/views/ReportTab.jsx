@@ -176,7 +176,7 @@ export function ReportTab({ model, userMap }) {
     const silent = engineers.filter((e) => e.assigned >= 3 && e.logged === 0).sort((a, b) => b.assigned - a.assigned);
     const silentIds = new Set(silent.map((e) => e.id));
 
-    // Monthly trend (cases created per month, with / without a service report), last 12 months with data
+    // Monthly trend (cases created per month, with / without a worksheet), last 12 months with data
     const byMonth = {};
     live.forEach((c) => {
       if (!c.createdISO) return;
@@ -186,7 +186,7 @@ export function ReportTab({ model, userMap }) {
     });
     const months = Object.keys(byMonth).sort().slice(-12).map((k) => ({ key: k, label: monthLabel(k), ...byMonth[k] }));
 
-    // How long open jobs (no service report yet) have been waiting, by age since created
+    // How long open jobs (no worksheet yet) have been waiting, by age since created
     const backlog = open.filter((c) => !c.hasWorksheet);
     const waiting = AGE_BUCKETS.map((b) => ({ key: b.key, label: b.key, color: b.color, value: backlog.filter((c) => ageBucketOf(c.ageDays) === b.key).length }));
     const oldestWaiting = [...backlog].sort((a, b) => (b.ageDays ?? 0) - (a.ageDays ?? 0))[0];
@@ -208,7 +208,7 @@ export function ReportTab({ model, userMap }) {
     if (silent.length) {
       const silentJobs = live.filter((c) => c.engineerIds.some((id) => silentIds.has(id)));
       actions.push({ id: "silent", rows: silentJobs, engineers: silent,
-        text: `${plural(silent.length, "engineer")} ${silent.length === 1 ? "has" : "have"} 3 or more jobs but ${silent.length === 1 ? "has" : "have"} never submitted a service report (${plural(silentJobs.length, "job")} between them). Arrange a short refresher on the mobile service report.` });
+        text: `${plural(silent.length, "engineer")} ${silent.length === 1 ? "has" : "have"} 3 or more jobs but ${silent.length === 1 ? "has" : "have"} never submitted a worksheet (${plural(silentJobs.length, "job")} between them). Arrange a short refresher on the mobile worksheet.` });
     }
     if (recurring.length) { const [cust, prob] = recurring[0].key.split(" · "); actions.push({ id: "recurring", rows: live.filter((c) => recurring[0].ids.has(c.id)), text: `${cust} has had "${prob}" ${recurring[0].value} times. Consider a root-cause visit or a maintenance contract review.` }); }
 
@@ -232,7 +232,7 @@ export function ReportTab({ model, userMap }) {
   const problemOptions = uniqSorted(r.live.map((c) => c.x_studio_problem_type));
   const anyFilter = fYear.length + fMonth.length + fCustomer.length + fProblem.length > 0;
   const clearFilters = () => { setFYear([]); setFMonth([]); setFCustomer([]); setFProblem([]); };
-  // Tile = jobs (size) + completion (colour) + working hours, open / late jobs and service reports.
+  // Tile = jobs (size) + completion (colour) + working hours, open / late jobs and worksheets.
   // A job with two engineers counts (with its hours) for each of them.
   const tile = (key, label, jobs, extra = "") => {
     const completed = jobs.filter(isCompleted).length;
@@ -240,7 +240,7 @@ export function ReportTab({ model, userMap }) {
     const late = open.filter((c) => (c.ageDays ?? 0) > LATE_DAYS).length;
     const hours = jobs.reduce((s, c) => s + c.hours, 0);
     const reports = jobs.filter((c) => c.hasWorksheet).length;
-    const hint = [extra, `${fmtNum(hours, 0)} h worked`, `${open.length} open${late ? ` (${late} late)` : ""}`, plural(reports, "service report")].filter(Boolean).join(" · ");
+    const hint = [extra, `${fmtNum(hours, 0)} h worked`, `${open.length} open${late ? ` (${late} late)` : ""}`, plural(reports, "worksheet")].filter(Boolean).join(" · ");
     return { key, label, value: jobs.length, completed, rate: pct(completed, jobs.length), hint };
   };
   const tmItems = !tmRegion
@@ -281,12 +281,12 @@ export function ReportTab({ model, userMap }) {
     { key: "created", label: "Created On", weight: 11, render: (c) => <Txt>{fmtDay(c.createdISO)}</Txt>, sortValue: (c) => c.createdISO, exportValue: (c) => c.createdISO },
     { key: "age", label: "Days Open", weight: 9, info: "Open jobs: days since the job was created. Completed jobs show —.", render: (c) => (c.isOpen ? <Txt style={{ color: (c.ageDays ?? 0) > LATE_DAYS ? T.danger : undefined, fontWeight: 600 }}>{c.ageDays}</Txt> : <Txt>{null}</Txt>), sortValue: (c) => (c.isOpen ? c.ageDays ?? 0 : -1), exportValue: (c) => (c.isOpen ? c.ageDays : "") },
     { key: "hours", label: "Hours", weight: 7, info: "Total Working Hours from the job's timesheets.", render: (c) => (c.hours ? <span className="col-value">{fmtNum(c.hours, 1)}</span> : <Txt>{null}</Txt>), sortValue: (c) => c.hours },
-    { key: "report", label: "Service Report", weight: 11, render: (c) => <YesNo yes={c.hasWorksheet} />, sortValue: (c) => (c.hasWorksheet ? 1 : 0), exportValue: (c) => (c.hasWorksheet ? "Yes" : "No") },
+    { key: "report", label: "Worksheet", weight: 11, render: (c) => <YesNo yes={c.hasWorksheet} />, sortValue: (c) => (c.hasWorksheet ? 1 : 0), exportValue: (c) => (c.hasWorksheet ? "Yes" : "No") },
     { key: "odoo", label: "Odoo Link", exportOnly: true, exportValue: (c) => odooLinkCell(c.id) },
   ];
 
   // ── Engineer ranking & workload ──
-  // Report rate = service reports logged ÷ jobs assigned (lifetime); worst first by default.
+  // Report rate = worksheets logged ÷ jobs assigned (lifetime); worst first by default.
   const engineerColumns = [
     { key: "name", label: "Engineer", weight: 18, exportWidth: 30, render: (e) => <TitleCell title={e.name} />, sortValue: (e) => e.name, exportValue: (e) => e.name },
     { key: "assigned", label: "Assigned", weight: 7, info: "All jobs ever assigned to the engineer (Service Engineers field): their total workload.",
@@ -294,8 +294,8 @@ export function ReportTab({ model, userMap }) {
     { key: "open", label: "Open", weight: 6, info: "Jobs not yet completed or cancelled: the engineer's workload right now.",
       render: (e) => <Txt>{e.open}</Txt>, sortValue: (e) => e.open },
     { key: "completed", label: "Completed", weight: 7, info: "Assigned jobs in a Completed stage.", render: (e) => <Txt>{e.completed}</Txt>, sortValue: (e) => e.completed },
-    { key: "rate", label: "Reports · Rate", weight: 14, exportWidth: 16,
-      info: "Service reports logged (jobs with at least one worksheet) and report rate = logged ÷ assigned. Colour runs red (0%) → amber → green (100%).",
+    { key: "rate", label: "Worksheets · Rate", weight: 14, exportWidth: 16,
+      info: "Worksheets logged (jobs with at least one worksheet) and report rate = logged ÷ assigned. Colour runs red (0%) → amber → green (100%).",
       render: (e) => {
         const p = pct(e.logged, e.assigned);
         return (
@@ -309,13 +309,13 @@ export function ReportTab({ model, userMap }) {
         );
       },
       sortValue: (e) => e.rate, exportValue: (e) => `${e.logged} of ${e.assigned} (${pct(e.logged, e.assigned)}%)` },
-    { key: "backlog", label: "Backlog", weight: 7, info: "Open jobs with no service report yet.",
+    { key: "backlog", label: "Backlog", weight: 7, info: "Open jobs with no worksheet yet.",
       render: (e) => (e.backlog ? <Pill color={T.warning} bg={T.warningBg}>{e.backlog}</Pill> : <Txt>{0}</Txt>), sortValue: (e) => e.backlog, exportValue: (e) => e.backlog },
     { key: "flagged", label: "Flagged", weight: 6, info: "Jobs with a paperwork mismatch (worksheet without MoM, or MoM / document without worksheet).",
       render: (e) => (e.flagged ? <Pill color={T.danger} bg={T.dangerBg}>{e.flagged}</Pill> : <Txt>{0}</Txt>), sortValue: (e) => e.flagged, exportValue: (e) => e.flagged },
     { key: "hours", label: "Hours", weight: 6, info: "Total Working Hours from the timesheets on the engineer's jobs (a job with two engineers counts for each).",
       render: (e) => (e.hours ? <span className="col-value">{fmtNum(e.hours, 0)}</span> : <Txt>{null}</Txt>), sortValue: (e) => e.hours, exportValue: (e) => Math.round(e.hours) },
-    { key: "last", label: "Last Report", weight: 9, exportWidth: 16, info: `Days since the engineer's most recent service report was created. Red when never, or more than ${STUCK_DAYS} days ago.`,
+    { key: "last", label: "Last Worksheet", weight: 9, exportWidth: 16, info: `Days since the engineer's most recent worksheet was created. Red when never, or more than ${STUCK_DAYS} days ago.`,
       render: (e) => (e.lastLoggedDays === null
         ? <span style={{ fontSize: 11.5, fontWeight: 700, color: T.danger }}>Never</span>
         : <span style={{ fontSize: 11.5, fontWeight: e.lastLoggedDays > STUCK_DAYS ? 700 : 500, color: e.lastLoggedDays > STUCK_DAYS ? T.danger : T.textSecondary }}>{e.lastLoggedDays}d ago</span>),
@@ -323,27 +323,27 @@ export function ReportTab({ model, userMap }) {
     { key: "odoo", label: "Odoo Link", exportOnly: true, exportWidth: 14, exportValue: (e) => ({ text: "Open in Odoo", hyperlink: odooEmployeeUrl(e.id) }) },
   ];
 
-  // ── Visit analysis (service report data) ──
+  // ── Visit analysis (worksheet data) ──
   const wsEngineers = wsEngineerIds;
   const serviceTypes = tally(worksheets.map((w) => w.x_studio_service_type || "Not set"))
     .map((t, i) => ({ ...t, color: t.key === "Not set" ? "#94A3B8" : colorFor(t.key, SERVICE_TYPE_COLORS, i) }));
   const hasResolution = (w) => !!(w.x_studio_resolution_applied || "").trim();
-  const visitRows = worksheets.filter((w) => w.problems.length || hasResolution(w)); // only reports with a problem or resolution
+  const visitRows = worksheets.filter((w) => w.problems.length || hasResolution(w)); // only worksheets with a problem or resolution
   const visitColumns = [
     { key: "engineer", label: "Engineer", weight: 11, exportWidth: 28,
       render: (w) => <EngineerPills ids={wsEngineers(w)} userMap={userMap} />,
       sortValue: (w) => engineerNames(wsEngineers(w), userMap).join(", "), exportValue: (w) => engineerNames(wsEngineers(w), userMap).join(", ") },
     { key: "case", label: "Job", weight: 18, exportWidth: 40,
-      render: (w) => <TitleCell title={w.case?.name || w.x_studio_task_id?.[1] || "Unlinked report"} sub={caseCustomer(w.case)} />,
+      render: (w) => <TitleCell title={w.case?.name || w.x_studio_task_id?.[1] || "Unlinked worksheet"} sub={caseCustomer(w.case)} />,
       sortValue: (w) => w.case?.name || "", exportValue: (w) => w.case?.name || w.x_studio_task_id?.[1] || "" },
-    { key: "problems", label: "Problems Identified", weight: 16, exportWidth: 40, info: "Problems Identified tags on the service report.",
+    { key: "problems", label: "Problems Identified", weight: 16, exportWidth: 40, info: "Problems Identified tags on the worksheet.",
       render: (w) => <TagList items={w.problems} color="#DC2626" />, sortValue: (w) => w.problems.length, exportValue: (w) => w.problems.join(", ") },
     { key: "resolution", label: "Resolution Applied", weight: 24, exportWidth: 70, info: "What the engineer did to fix it (Resolution Applied). Hover to read it in full.",
       render: (w) => (hasResolution(w)
         ? <span title={w.x_studio_resolution_applied} style={{ fontSize: 11.5, color: T.textSecondary, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", whiteSpace: "pre-line" }}>{w.x_studio_resolution_applied.trim()}</span>
         : <Txt style={{ color: T.textMuted }}>Not recorded</Txt>),
       sortValue: (w) => (hasResolution(w) ? 1 : 0), exportValue: (w) => (w.x_studio_resolution_applied || "").trim() },
-    { key: "spares", label: "Spare Parts Used", weight: 13, exportWidth: 36, info: "Spare parts listed on the service report.",
+    { key: "spares", label: "Spare Parts Used", weight: 13, exportWidth: 36, info: "Spare parts listed on the worksheet.",
       render: (w) => <TagList items={w.spares} color="#7C3AED" />, sortValue: (w) => w.spares.length, exportValue: (w) => w.spares.join(", ") },
     { key: "odoo", label: "Odoo Link", exportOnly: true, exportValue: (w) => odooLinkCell(w.caseId), exportWidth: 14 },
   ];
@@ -353,17 +353,17 @@ export function ReportTab({ model, userMap }) {
   const dayCell = (v) => (v === null ? <Txt>{null}</Txt> : <span className="col-value">{Number.isInteger(v) ? v : fmtNum(v, 1)}</span>);
   const visitEngineerColumns = [
     { key: "name", label: "Engineer", weight: 18, exportWidth: 30, render: (e) => <TitleCell title={e.name} />, sortValue: (e) => e.name, exportValue: (e) => e.name },
-    { key: "visits", label: "Visits", weight: 6, info: "Service reports attributed to the engineer (Assigned Service Engineer, else the job's Service Engineers).",
+    { key: "visits", label: "Visits", weight: 6, info: "Worksheets attributed to the engineer (Assigned Service Engineer, else the job's Service Engineers).",
       render: (e) => <span className="col-value">{e.visits}</span>, sortValue: (e) => e.visits },
     { key: "avg", label: "Avg Days", weight: 8,
-      info: "How this is calculated: for each of the engineer's service reports (visits), take Actual Visit End Date − Actual Visit Start Date + 1 — both the start and end day count as full days, so a visit that starts and ends on the same day is 1 day. Average Days is the mean of that figure across every one of the engineer's visits that has both a start and an end date. A visit missing either date is skipped entirely — it counts toward Visits above but not toward this average. Engineer attribution: the service report's Assigned Service Engineer, or the job's Service Engineers when that's blank.",
+      info: "How this is calculated: for each of the engineer's worksheets (visits), take Actual Visit End Date − Actual Visit Start Date + 1 — both the start and end day count as full days, so a visit that starts and ends on the same day is 1 day. Average Days is the mean of that figure across every one of the engineer's visits that has both a start and an end date. A visit missing either date is skipped entirely — it counts toward Visits above but not toward this average. Engineer attribution: the worksheet's Assigned Service Engineer, or the job's Service Engineers when that's blank.",
       render: (e) => dayCell(e.avgDays), sortValue: (e) => e.avgDays ?? -1, exportValue: (e) => (e.avgDays === null ? "" : Number(e.avgDays.toFixed(1))) },
     { key: "avgHours", label: "Avg Hours", weight: 8,
       info: "Average Total Working Hours per timesheet entry, from the engineer's own timesheets (not the visit dates): sum of Total Working Hours across all of their timesheets, divided by how many timesheet entries they have. Engineer attribution: the timesheet's Submitted By, or the job's Service Engineers when that's blank. Blank when the engineer has no timesheets.",
       render: (e) => dayCell(e.avgHours), sortValue: (e) => e.avgHours ?? -1, exportValue: (e) => (e.avgHours === null ? "" : Number(e.avgHours.toFixed(1))) },
     { key: "problems", label: "Problems Identified", weight: 9, info: "Number of the engineer's visits with at least one Problems Identified tag, out of their visits. Colour: red (none) → green (all).",
       render: (e) => <HeatPct value={e.problemRate}>{e.withProblems} of {e.visits}</HeatPct>, sortValue: (e) => e.withProblems, exportValue: (e) => e.withProblems },
-    { key: "spares", label: "Spare Parts Used", weight: 16, exportWidth: 50, info: "The spare parts recorded on the engineer's service reports (Spare Parts Used), each listed once.",
+    { key: "spares", label: "Spare Parts Used", weight: 16, exportWidth: 50, info: "The spare parts recorded on the engineer's worksheets (Spare Parts Used), each listed once.",
       render: (e) => <TagList items={e.spareParts} color="#7C3AED" />, sortValue: (e) => e.spareParts.length, exportValue: (e) => e.spareParts.join(", ") },
     { key: "type", label: "Main Service Type", weight: 11, exportWidth: 20, info: "The engineer's most common Service Type across their visits.",
       render: (e) => <Pill color={colorFor(e.topServiceType, SERVICE_TYPE_COLORS)}>{e.topServiceType}</Pill>, sortValue: (e) => e.topServiceType, exportValue: (e) => e.topServiceType },
@@ -446,7 +446,7 @@ export function ReportTab({ model, userMap }) {
           maxHeight={420}
           emptyText="No engineers assigned."
           toolbar={<span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: T.textMuted }}>Click an engineer to see their jobs <InfoDot text={[
-            { label: "Ranking", formula: "Report Rate = Reports Logged ÷ Jobs Assigned", text: "Sorted worst rate first (lifetime) — an engineer who never files a report sorts to the top no matter how many jobs they've closed." },
+            { label: "Ranking", formula: "Report Rate = Worksheets logged / Jobs assigned", text: "Sorted worst rate first (lifetime) — an engineer who never files a report sorts to the top no matter how many jobs they've closed." },
             { label: "Workload", formula: "Assigned = lifetime jobs · Open = jobs in flight now", text: "Assigned is their total-ever caseload; Open is what's actually on their plate today." },
             { label: "Sort & drill in", text: "Click any column header to re-sort, or click an engineer's row to list their jobs below." },
           ]} /></span>}
@@ -456,15 +456,15 @@ export function ReportTab({ model, userMap }) {
         const e = r.engineers.find((x) => x.id === rankEngineer);
         if (!e) return null;
         const rows = r.live.filter((c) => c.engineerIds.includes(e.id));
-        return jobsTable(`${e.name} · ${plural(rows.length, "job")} (${e.completed} completed, ${e.open} open, ${e.logged} with a service report)`, rows, `field-service-jobs-${e.name}`, () => setRankEngineer(null), "adage_fsm_report_engineer_jobs_cols_v2");
+        return jobsTable(`${e.name} · ${plural(rows.length, "job")} (${e.completed} completed, ${e.open} open, ${e.logged} with a worksheet)`, rows, `field-service-jobs-${e.name}`, () => setRankEngineer(null), "adage_fsm_report_engineer_jobs_cols_v2");
       })()}
 
       {/* ── Trends ── */}
       <ChartRow columns="minmax(0, 1.4fr) minmax(0, 1fr)">
-        <Panel title="Monthly Trend · Cases Created" info="Jobs created per month (Created On): green = has a worksheet (service report), amber = no worksheet yet. Last 12 months with data. Click a month to list its jobs.">
+        <Panel title="Monthly Trend · Cases Created" info="Jobs created per month (Created On): green = has a worksheet, amber = no worksheet yet. Last 12 months with data. Click a month to list its jobs.">
           <MonthlyBars months={r.months} activeKey={trendMonth} onPick={(k) => setTrendMonth((v) => (v === k ? null : k))} />
         </Panel>
-        <Panel title="How long open jobs have been waiting" info="Open jobs with no service report yet, grouped by days since they were created. Older = waiting longer.">
+        <Panel title="How long open jobs have been waiting" info="Open jobs with no worksheet yet, grouped by days since they were created. Older = waiting longer.">
           <BarList items={r.waiting} formatValue={(v) => plural(v, "job")}
             onItemClick={(k) => setWaitBucket((v) => (v === k ? null : k))} activeKey={waitBucket} />
           <div style={{ fontSize: 11.5, color: T.textMuted, marginTop: 8 }}>Click a band to list its jobs.</div>
@@ -500,7 +500,7 @@ export function ReportTab({ model, userMap }) {
           rowStyle={(e) => (e.id === visitEngineer ? { background: T.accentBg } : null)}
           exportName="field-service-visits-by-engineer"
           maxHeight={420}
-          emptyText="No service reports yet."
+          emptyText="No worksheets yet."
           toolbar={<span style={{ fontSize: 11.5, color: T.textMuted }}>Click an engineer to see their jobs</span>}
         />
       </div>
@@ -522,7 +522,7 @@ export function ReportTab({ model, userMap }) {
           onRowClick={(w) => openCase(w.case || { id: w.caseId })}
           exportName="field-service-problems-resolutions"
           maxHeight={420}
-          emptyText="No service report has a problem or resolution recorded."
+          emptyText="No worksheet has a problem or resolution recorded."
         />
       </div>
 
@@ -530,7 +530,7 @@ export function ReportTab({ model, userMap }) {
       <SectionLabel>Problem Types, Service Types &amp; Next Steps</SectionLabel>
       <ChartRow columns="minmax(0, 1fr) minmax(0, 1fr)">
         <InteractiveDonut title="Problem Types" infoText="Jobs per Problem Type (the job's Problem Type field)." centerLabel="jobs" unit="jobs" segments={topWithOther(r.problemTypes)} />
-        <InteractiveDonut title="Service Type" infoText="Service Type picked on each service report." centerLabel="reports" unit="reports" segments={topWithOther(serviceTypes)} />
+        <InteractiveDonut title="Service Type" infoText="Service Type picked on each worksheet." centerLabel="worksheets" unit="worksheets" segments={topWithOther(serviceTypes)} />
       </ChartRow>
       {/* ── Next steps ── */}
       <div className="card report-avoid-break" style={{ padding: "14px 18px", marginBottom: 10, background: T.accentBg, border: `1px solid ${T.accentBdr}` }}>
@@ -559,7 +559,7 @@ export function ReportTab({ model, userMap }) {
             <>
               <div style={{ marginBottom: 10 }}>
                 <DataTable
-                  title={`Next step · ${plural(a.engineers.length, "engineer")} with 3+ jobs and no service report`}
+                  title={`Next step · ${plural(a.engineers.length, "engineer")} with 3+ jobs and no worksheet`}
                   columns={engineerColumns}
                   rows={a.engineers}
                   storageKey="adage_fsm_report_action_silent_cols_v2"
@@ -576,7 +576,7 @@ export function ReportTab({ model, userMap }) {
                   </>}
                 />
               </div>
-              {picked && jobsTable(`${picked.name} · ${plural(pickedJobs.length, "assigned job")} (${picked.open} open, no service report filed)`, pickedJobs, `field-service-jobs-${picked.name}`, () => setActionEngineer(null), "adage_fsm_report_engineer_jobs_cols_v2")}
+              {picked && jobsTable(`${picked.name} · ${plural(pickedJobs.length, "assigned job")} (${picked.open} open, no worksheet filed)`, pickedJobs, `field-service-jobs-${picked.name}`, () => setActionEngineer(null), "adage_fsm_report_engineer_jobs_cols_v2")}
             </>
           );
         }
