@@ -3,6 +3,17 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-09 — Problems & Resolutions: Year / Month / Customer / Problem Type filters
+
+- The Problems & Resolutions table gets the treemap's four filters (with chips, Clear all and "N worksheets shown"),
+  matched on the worksheet's job: Created On year / month, customer, Problem Type. Independent of the treemap filters.
+- New `FilterBar` component and shared `matchesJob` / `jobFilters` helpers in ReportTab.jsx; the treemap now uses them too
+  (same look and behaviour as before).
+- The filter row sits under the table's "Problems & Resolutions" heading, above the column headers, via a new optional
+  `subheader` prop on `DataTable` (ui.jsx).
+- Verified in headless Chrome: Month = Aug narrows the table from 21 to 3 worksheets with a "Month: Aug" chip, Clear all
+  restores 21, the treemap stays at 127 jobs; no console errors.
+
 ## 2026-10-09 — Report tab: pie charts hidden, footer note removed
 
 - Problem Types and Service Type pie charts are hidden for now behind `SHOW_TYPE_DONUTS = false` (set it to `true` to

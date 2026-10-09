@@ -72,6 +72,29 @@ const TableHint = ({ text, info }) => (
   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: T.textMuted }}>{text} <InfoDot text={info} /></span>
 );
 
+// Year / Month / Customer / Problem Type pickers + chips + Clear all (treemap and Problems & Resolutions).
+// filters: [{ key, label, options, selected, onChange, searchable? }]
+function FilterBar({ filters, count, noun }) {
+  const active = filters.filter((f) => f.selected.length);
+  return (
+    <div className="no-print" style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {filters.map((f) => (
+          <MultiSelect key={f.key} label={f.label} options={f.options} selected={f.selected} onChange={f.onChange}
+            searchable={f.searchable} searchPlaceholder={`Search ${f.label.toLowerCase()}...`} />
+        ))}
+        <span style={{ fontSize: 11.5, color: T.textMuted }}>{plural(count, noun)} shown</span>
+      </div>
+      {active.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {active.map((f) => <FilterChip key={f.key} label={`${f.label}: ${f.selected.join(", ")}`} onClear={() => f.onChange([])} />)}
+          <button onClick={() => filters.forEach((f) => f.onChange([]))} style={{ padding: "3px 10px", borderRadius: 100, border: `1px solid ${T.border}`, background: "none", color: T.textMuted, fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>Clear all ✕</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // "?" content shared by every job list (treemap, ranking, trend, waiting, visit and Next Steps drill-downs).
 const JOBS_INFO = [
   { label: "Days Open", formula: "Days Open = Today − Created On", text: "Open jobs only; red when over 60 days (late). Completed jobs show —." },
@@ -171,6 +194,10 @@ export function ReportTab({ model, userMap }) {
   const [fMonth, setFMonth] = useState([]);
   const [fCustomer, setFCustomer] = useState([]);
   const [fProblem, setFProblem] = useState([]);
+  const [pYear, setPYear] = useState([]);           // Problems & Resolutions filters (same four, on the worksheet's job)
+  const [pMonth, setPMonth] = useState([]);
+  const [pCustomer, setPCustomer] = useState([]);
+  const [pProblem, setPProblem] = useState([]);
   const [waitBucket, setWaitBucket] = useState(null);  // clicked age band in "How long open jobs have been waiting"
   const [trendMonth, setTrendMonth] = useState(null);   // clicked month in the monthly trend ("YYYY-MM")
   const [rankEngineer, setRankEngineer] = useState(null); // clicked row in Engineer Ranking & Workload (employee id)
@@ -236,15 +263,24 @@ export function ReportTab({ model, userMap }) {
   const regionOf = (c) => c.x_studio_regions || "No region";
   const yearOf = (c) => (c.createdISO || "").slice(0, 4);
   const monthOf = (c) => (c.createdISO ? MONTHS[Number(c.createdISO.slice(5, 7)) - 1] : "");
-  const tmCases = r.live.filter((c) =>
-    (!fYear.length || fYear.includes(yearOf(c))) && (!fMonth.length || fMonth.includes(monthOf(c))) &&
-    (!fCustomer.length || fCustomer.includes(caseCustomer(c))) && (!fProblem.length || fProblem.includes(c.x_studio_problem_type)));
-  const yearOptions = uniqSorted(r.live.map(yearOf)).reverse();
-  const monthOptions = MONTHS.filter((m) => r.live.some((c) => monthOf(c) === m));
-  const customerOptions = uniqSorted(r.live.map(caseCustomer));
-  const problemOptions = uniqSorted(r.live.map((c) => c.x_studio_problem_type));
-  const anyFilter = fYear.length + fMonth.length + fCustomer.length + fProblem.length > 0;
-  const clearFilters = () => { setFYear([]); setFMonth([]); setFCustomer([]); setFProblem([]); };
+  // Job filters (Created On year / month, customer, Problem Type), shared by the treemap and Problems & Resolutions.
+  // Each filter is a [selected, setSelected] pair; an empty selection means "all".
+  const matchesJob = (c, y, m, cu, p) => (!y.length && !m.length && !cu.length && !p.length) || (!!c &&
+    (!y.length || y.includes(yearOf(c))) && (!m.length || m.includes(monthOf(c))) &&
+    (!cu.length || cu.includes(caseCustomer(c))) && (!p.length || p.includes(c.x_studio_problem_type)));
+  const jobOptions = {
+    year: uniqSorted(r.live.map(yearOf)).reverse(),
+    month: MONTHS.filter((mo) => r.live.some((c) => monthOf(c) === mo)),
+    customer: uniqSorted(r.live.map(caseCustomer)),
+    problem: uniqSorted(r.live.map((c) => c.x_studio_problem_type)),
+  };
+  const jobFilters = (y, m, cu, p) => [
+    { key: "year", label: "Year", options: jobOptions.year, selected: y[0], onChange: y[1] },
+    { key: "month", label: "Month", options: jobOptions.month, selected: m[0], onChange: m[1] },
+    { key: "customer", label: "Customer", options: jobOptions.customer, selected: cu[0], onChange: cu[1], searchable: true },
+    { key: "problem", label: "Problem Type", options: jobOptions.problem, selected: p[0], onChange: p[1], searchable: true },
+  ];
+  const tmCases = r.live.filter((c) => matchesJob(c, fYear, fMonth, fCustomer, fProblem));
   // Tile = jobs (size) + completion (colour) + working hours, open / late jobs and worksheets.
   // A job with two engineers counts (with its hours) for each of them.
   const tile = (key, label, jobs, extra = "") => {
@@ -355,7 +391,8 @@ export function ReportTab({ model, userMap }) {
   const serviceTypes = tally(worksheets.map((w) => w.x_studio_service_type || "Not set"))
     .map((t, i) => ({ ...t, color: t.key === "Not set" ? "#94A3B8" : colorFor(t.key, SERVICE_TYPE_COLORS, i) }));
   const hasResolution = (w) => !!(w.x_studio_resolution_applied || "").trim();
-  const visitRows = worksheets.filter((w) => w.problems.length || hasResolution(w)); // only worksheets with a problem or resolution
+  const visitRows = worksheets.filter((w) => (w.problems.length || hasResolution(w)) // only worksheets with a problem or resolution
+    && matchesJob(w.case, pYear, pMonth, pCustomer, pProblem));
   const visitColumns = [
     { key: "engineer", label: "Engineer", weight: 11, exportWidth: 28,
       render: (w) => <EngineerPills ids={wsEngineers(w)} userMap={userMap} />,
@@ -448,22 +485,7 @@ export function ReportTab({ model, userMap }) {
             </div>
           );
         })()}
-        <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-          <MultiSelect label="Year" options={yearOptions} selected={fYear} onChange={setFYear} />
-          <MultiSelect label="Month" options={monthOptions} selected={fMonth} onChange={setFMonth} />
-          <MultiSelect label="Customer" options={customerOptions} selected={fCustomer} onChange={setFCustomer} searchable searchPlaceholder="Search customer..." />
-          <MultiSelect label="Problem Type" options={problemOptions} selected={fProblem} onChange={setFProblem} searchable searchPlaceholder="Search problem..." />
-          <span style={{ fontSize: 11.5, color: T.textMuted }}>{plural(tmCases.length, "job")} shown</span>
-        </div>
-        {anyFilter && (
-          <div className="no-print" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            {fYear.length > 0 && <FilterChip label={`Year: ${fYear.join(", ")}`} onClear={() => setFYear([])} />}
-            {fMonth.length > 0 && <FilterChip label={`Month: ${fMonth.join(", ")}`} onClear={() => setFMonth([])} />}
-            {fCustomer.length > 0 && <FilterChip label={`Customer: ${fCustomer.join(", ")}`} onClear={() => setFCustomer([])} />}
-            {fProblem.length > 0 && <FilterChip label={`Problem: ${fProblem.join(", ")}`} onClear={() => setFProblem([])} />}
-            <button onClick={clearFilters} style={{ padding: "3px 10px", borderRadius: 100, border: `1px solid ${T.border}`, background: "none", color: T.textMuted, fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>Clear all ✕</button>
-          </div>
-        )}
+        <FilterBar count={tmCases.length} noun="job" filters={jobFilters([fYear, setFYear], [fMonth, setFMonth], [fCustomer, setFCustomer], [fProblem, setFProblem])} />
         {tmItems.length ? <Treemap items={tmItems} selectedKey={tmEngineer} onSelect={(k) => { setTmPeek(null); tmSelect(k); }} onPeek={setTmPeek} /> : empty("No jobs match these filters")}
       </Panel>
       {tmJobs.length > 0 && jobsTable(`${tmEngineerName} · ${tmRegion} · ${plural(tmJobs.length, "job")} (${tmJobs.filter(isCompleted).length} completed)`, tmJobs, `field-service-jobs-${tmRegion}-${tmEngineerName}`, () => setTmEngineer(null), "adage_fsm_report_engineer_jobs_cols_v2")}
@@ -566,6 +588,7 @@ export function ReportTab({ model, userMap }) {
       <div style={{ marginBottom: 10 }}>
         <DataTable
           title="Problems & Resolutions"
+          subheader={<FilterBar count={visitRows.length} noun="worksheet" filters={jobFilters([pYear, setPYear], [pMonth, setPMonth], [pCustomer, setPCustomer], [pProblem, setPProblem])} />}
           columns={visitColumns}
           rows={visitRows}
           storageKey="adage_fsm_report_visits_cols_v3"
@@ -577,6 +600,7 @@ export function ReportTab({ model, userMap }) {
           emptyText="No worksheet has a problem or resolution recorded."
           toolbar={<TableHint text="Click a row to open the job in Odoo" info={[
             { label: "Rows shown", formula: "Worksheets with ≥ 1 problem tag OR a Resolution Applied", text: "Worksheets with neither are hidden." },
+            { label: "Filters", text: "Year, Month, Customer and Problem Type above the table work like the treemap's: they match the worksheet's job (its Created On, customer and Problem Type)." },
             { label: "Columns", text: "Problems Identified and Spare Parts Used are the worksheet's tags; Resolution Applied is the engineer's own text (hover to read it in full)." },
             { label: "Engineer", text: "The worksheet's Assigned Service Engineer, else the job's Service Engineers." },
           ]} />}

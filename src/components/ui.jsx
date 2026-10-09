@@ -781,6 +781,7 @@ export function DataTable({
   title, columns, rows, rowKey = (r) => r.id, storageKey, searchText = null, searchPlaceholder = "Search...",
   onRowClick = null, toolbar = null, exportName = null, emptyText = "No records match the current filters.",
   rowStyle = null, maxHeight = 560, defaultSort = null,
+  subheader = null, // optional row between the title bar and the grid (e.g. filters)
 }) {
   const shown = columns.filter((c) => !c.exportOnly);
   const defaultWeights = shown.map((c) => c.weight || 10);
@@ -899,6 +900,7 @@ export function DataTable({
           />
         )}
       </div>
+      {subheader}
 
       <div ref={gridRef} style={{ "--list-grid-cols": gridTemplate(weights), border: `1px solid ${T.border}`, borderRadius: 10, overflow: "auto", maxHeight, background: "#fff" }}>
         <div style={{ minWidth: Math.max(1000, shown.length * 105) }}>
