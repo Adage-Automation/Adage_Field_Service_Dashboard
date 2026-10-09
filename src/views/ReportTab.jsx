@@ -198,6 +198,7 @@ export function ReportTab({ model, userMap }) {
   const [pMonth, setPMonth] = useState([]);
   const [pCustomer, setPCustomer] = useState([]);
   const [pProblem, setPProblem] = useState([]);
+  const [pEngineer, setPEngineer] = useState([]);   // Problems & Resolutions: engineer names
   const [waitBucket, setWaitBucket] = useState(null);  // clicked age band in "How long open jobs have been waiting"
   const [trendMonth, setTrendMonth] = useState(null);   // clicked month in the monthly trend ("YYYY-MM")
   const [rankEngineer, setRankEngineer] = useState(null); // clicked row in Engineer Ranking & Workload (employee id)
@@ -391,8 +392,14 @@ export function ReportTab({ model, userMap }) {
   const serviceTypes = tally(worksheets.map((w) => w.x_studio_service_type || "Not set"))
     .map((t, i) => ({ ...t, color: t.key === "Not set" ? "#94A3B8" : colorFor(t.key, SERVICE_TYPE_COLORS, i) }));
   const hasResolution = (w) => !!(w.x_studio_resolution_applied || "").trim();
-  const visitRows = worksheets.filter((w) => (w.problems.length || hasResolution(w)) // only worksheets with a problem or resolution
-    && matchesJob(w.case, pYear, pMonth, pCustomer, pProblem));
+  const problemRows = worksheets.filter((w) => w.problems.length || hasResolution(w)); // only worksheets with a problem or resolution
+  const wsEngineerNames = (w) => engineerNames(wsEngineers(w), userMap);
+  const visitRows = problemRows.filter((w) => matchesJob(w.case, pYear, pMonth, pCustomer, pProblem)
+    && (!pEngineer.length || wsEngineerNames(w).some((n) => pEngineer.includes(n))));
+  const visitFilters = [
+    { key: "engineer", label: "Engineer", options: uniqSorted(problemRows.flatMap(wsEngineerNames)), selected: pEngineer, onChange: setPEngineer, searchable: true },
+    ...jobFilters([pYear, setPYear], [pMonth, setPMonth], [pCustomer, setPCustomer], [pProblem, setPProblem]),
+  ];
   const visitColumns = [
     { key: "engineer", label: "Engineer", weight: 11, exportWidth: 28,
       render: (w) => <EngineerPills ids={wsEngineers(w)} userMap={userMap} />,
@@ -588,7 +595,7 @@ export function ReportTab({ model, userMap }) {
       <div style={{ marginBottom: 10 }}>
         <DataTable
           title="Problems & Resolutions"
-          subheader={<FilterBar count={visitRows.length} noun="worksheet" filters={jobFilters([pYear, setPYear], [pMonth, setPMonth], [pCustomer, setPCustomer], [pProblem, setPProblem])} />}
+          subheader={<FilterBar count={visitRows.length} noun="worksheet" filters={visitFilters} />}
           columns={visitColumns}
           rows={visitRows}
           storageKey="adage_fsm_report_visits_cols_v3"
@@ -600,7 +607,7 @@ export function ReportTab({ model, userMap }) {
           emptyText="No worksheet has a problem or resolution recorded."
           toolbar={<TableHint text="Click a row to open the job in Odoo" info={[
             { label: "Rows shown", formula: "Worksheets with ≥ 1 problem tag OR a Resolution Applied", text: "Worksheets with neither are hidden." },
-            { label: "Filters", text: "Year, Month, Customer and Problem Type above the table work like the treemap's: they match the worksheet's job (its Created On, customer and Problem Type)." },
+            { label: "Filters", text: "Engineer matches the worksheet's engineer (Assigned Service Engineer, else the job's Service Engineers). Year, Month, Customer and Problem Type work like the treemap's: they match the worksheet's job (its Created On, customer and Problem Type)." },
             { label: "Columns", text: "Problems Identified and Spare Parts Used are the worksheet's tags; Resolution Applied is the engineer's own text (hover to read it in full)." },
             { label: "Engineer", text: "The worksheet's Assigned Service Engineer, else the job's Service Engineers." },
           ]} />}

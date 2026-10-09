@@ -9,6 +9,9 @@ noting what changed, why, and how it was verified.
   matched on the worksheet's job: Created On year / month, customer, Problem Type. Independent of the treemap filters.
 - New `FilterBar` component and shared `matchesJob` / `jobFilters` helpers in ReportTab.jsx; the treemap now uses them too
   (same look and behaviour as before).
+- An **Engineer** filter (searchable) comes first in that row: it matches the worksheet's engineer (Assigned Service
+  Engineer, else the job's Service Engineers); options are the engineers on worksheets with a problem or resolution.
+  Verified: Engineer = ADESH KUMAR narrows 21 → 4 worksheets with an "Engineer: ADESH KUMAR" chip.
 - The filter row sits under the table's "Problems & Resolutions" heading, above the column headers, via a new optional
   `subheader` prop on `DataTable` (ui.jsx).
 - Verified in headless Chrome: Month = Aug narrows the table from 21 to 3 worksheets with a "Month: Aug" chip, Clear all
