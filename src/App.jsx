@@ -141,7 +141,7 @@ export default function App() {
       setUserMap(map);
       setRaw({ tasks, worksheets, timesheets, specialDates, momAmc, momComm, certs, docSection, problems, spares });
       setLastUpdated(new Date());
-      if (hasData.current) setToast({ ok: true, text: `✓ Data refreshed from Odoo · ${tasks.length} cases, ${worksheets.length} worksheets` });
+      if (hasData.current) setToast({ ok: true, text: `✓ Data refreshed from Odoo · ${tasks.length} jobs, ${worksheets.length} worksheets` });
       hasData.current = true;
     } catch (e) {
       if (hasData.current) setToast({ ok: false, text: `Refresh failed: ${e.message}. Showing the previous data.` });
@@ -235,7 +235,7 @@ export default function App() {
             options={engineers.map((e) => ({ value: e.id, label: e.name, meta: e.count }))}
             allLabel="All Service Engineers"
             searchPlaceholder="Search service engineer..."
-            title="Filter every tab by assigned service engineer"
+            title="Filter every tab by assigned engineer"
             width={240}
           />
           <div style={{ width: 1, height: 22, background: T.border, margin: "0 8px" }} />

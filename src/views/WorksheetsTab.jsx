@@ -151,10 +151,10 @@ export function WorksheetsTab({ model, userMap }) {
   const maxSpareUses = spareRegister[0]?.uses || 0;
 
   const resolutionColumns = [
-    { key: "case", label: "Case", weight: 18, exportWidth: 40,
+    { key: "case", label: "Job", weight: 18, exportWidth: 40,
       render: (w) => <TitleCell title={w.case?.name || w.x_studio_task_id?.[1] || "Unlinked worksheet"} sub={caseCustomer(w.case)} />,
       sortValue: (w) => w.case?.name || "", exportValue: (w) => w.case?.name || w.x_studio_task_id?.[1] || "" },
-    { key: "ptype", label: "Problem Type", weight: 11, exportWidth: 22, info: "The case's Problem Type field in Odoo.",
+    { key: "ptype", label: "Problem Type", weight: 11, exportWidth: 22, info: "The job's Problem Type field in Odoo.",
       render: (w) => <Txt>{w.case?.x_studio_problem_type}</Txt>, sortValue: (w) => w.case?.x_studio_problem_type || "" },
     { key: "problems", label: "Problems Identified", weight: 18, exportWidth: 40, info: "Problems Identified tags on the worksheet.",
       render: (w) => <TagList items={w.problems} color="#DC2626" />, sortValue: (w) => w.problems.length, exportValue: (w) => w.problems.join(", ") },
@@ -184,7 +184,7 @@ export function WorksheetsTab({ model, userMap }) {
       sortValue: (r) => r.part, exportValue: (r) => r.part },
     { key: "uses", label: "Times Used", weight: 8, info: "Number of worksheets that list this part under Spare Parts Used.",
       render: (r) => <span className="col-value">{r.uses}×</span>, sortValue: (r) => r.uses },
-    { key: "cases", label: "Used On Cases", weight: 28, exportWidth: 60,
+    { key: "cases", label: "Used On Jobs", weight: 28, exportWidth: 60,
       render: (r) => <Txt title={r.cases.join("\n")}>{r.cases.join(" · ")}</Txt>, sortValue: (r) => r.cases.length, exportValue: (r) => r.cases.join("; ") },
     { key: "engineers", label: "Engineers", weight: 16, exportWidth: 30,
       render: (r) => <Txt title={r.engineers.join(", ")}>{r.engineers.join(", ")}</Txt>, sortValue: (r) => r.engineers.join(", "), exportValue: (r) => r.engineers.join(", ") },
@@ -193,11 +193,11 @@ export function WorksheetsTab({ model, userMap }) {
   ];
 
   const columns = [
-    { key: "case", label: "Case", weight: 22, exportWidth: 44,
+    { key: "case", label: "Job", weight: 22, exportWidth: 44,
       render: (w) => <TitleCell title={w.case?.name || w.x_studio_task_id?.[1] || "Unlinked worksheet"} sub={caseCustomer(w.case) || w.x_name} />,
       sortValue: (w) => w.case?.name || w.x_studio_task_id?.[1] || "", exportValue: (w) => w.case?.name || w.x_studio_task_id?.[1] || "" },
-    { key: "engineer", label: "Service Engineer", weight: 13, exportWidth: 30,
-      info: "The worksheet's Assigned Service Engineer, or the case's Service Engineers when that field is empty.",
+    { key: "engineer", label: "Engineer", weight: 13, exportWidth: 30,
+      info: "The worksheet's Assigned Service Engineer, or the job's Service Engineers when that field is empty.",
       render: (w) => <EngineerPills ids={wsEngineers(w)} userMap={userMap} />,
       sortValue: (w) => engineerNames(wsEngineers(w), userMap).join(", "), exportValue: (w) => engineerNames(wsEngineers(w), userMap).join(", ") },
     { key: "type", label: "Service Type", weight: 11, exportWidth: 20,
@@ -206,7 +206,7 @@ export function WorksheetsTab({ model, userMap }) {
       sortValue: (w) => w.x_studio_service_type || "" },
     { key: "start", label: "Visit Start", weight: 9, info: "Worksheet's Actual Visit Start Date.", exportWidth: 14, render: (w) => <Txt>{fmtDay(w.x_studio_actual_visit_start_date)}</Txt>, sortValue: (w) => isoDay(w.x_studio_actual_visit_start_date) },
     { key: "end", label: "Visit End", weight: 9, info: "Worksheet's Actual Visit End Date.", exportWidth: 14, render: (w) => <Txt>{fmtDay(w.x_studio_actual_visit_end_date)}</Txt>, sortValue: (w) => isoDay(w.x_studio_actual_visit_end_date) },
-    { key: "days", label: "Time Taken (Days)", weight: 7,
+    { key: "days", label: "Visit Length (Days)", weight: 7,
       info: "Visit End − Visit Start + 1, so both days count (e.g. 10 → 12 Apr = 3 days). n/a means a date is missing; those rows are left out of the average.",
       render: (w) => (w.visitDays !== null ? <span className="col-value">{w.visitDays}</span> : <Pill color={T.warning} bg={T.warningBg} title="Start or end date missing">n/a</Pill>),
       sortValue: (w) => w.visitDays },
@@ -220,14 +220,14 @@ export function WorksheetsTab({ model, userMap }) {
       <KpiRow>
         <KpiCard label="Worksheets" value={fmtNum(worksheets.length)} tone="accent"
           info="Service Call Worksheets filed in Odoo."
-          sub={`across ${fmtNum(caseCount)} case${caseCount === 1 ? "" : "s"}`} />
+          sub={`across ${fmtNum(caseCount)} job${caseCount === 1 ? "" : "s"}`} />
         <KpiCard label="Problems Identified" value={fmtNum(problemTotal)} tone="danger"
           info="Total problem tags in the worksheets' Problems Identified field. The note below counts worksheets where Problems Found? is Yes."
           sub={`${problemsYes} worksheet${problemsYes === 1 ? "" : "s"} marked “Problems found: Yes” · ${problemItems.length} distinct`} />
         <KpiCard label="Spare Parts Used" value={fmtNum(spareTotal)} tone="warning"
           info="Total spare-part entries in the worksheets' Spare Parts Used field. The note below counts worksheets where Spare Parts was used? is Yes."
           sub={`${sparesYes} worksheet${sparesYes === 1 ? "" : "s"} marked “Spares used: Yes” · ${spareItems.length} distinct`} />
-        <KpiCard label="Avg Time Taken" value={avgDays === null ? "—" : `${fmtNum(avgDays, 1)} d`} tone="success"
+        <KpiCard label="Average Visit Length" value={avgDays === null ? "—" : `${fmtNum(avgDays, 1)} d`} tone="success"
           info="Days between Actual Visit Start Date and Actual Visit End Date, counting both days. Worksheets missing either date are left out."
           sub={durations.length
             ? `${Math.min(...durations)}–${Math.max(...durations)} days range · ${missingDates} missing a date`
@@ -260,7 +260,7 @@ export function WorksheetsTab({ model, userMap }) {
           </Panel>
         </Stack>
         <Stack>
-          <Panel title="Start → End Duration" info="Worksheets grouped by how many days the visit lasted (start to end, counting both days). Click a bar to filter.">
+          <Panel title="Visit Length" info="Worksheets grouped by how many days the visit lasted (start to end, counting both days). Click a bar to filter.">
             <BarList items={durationItems} formatValue={(v) => `${v} ws`} onItemClick={(k) => setBucket((v) => (v === k ? null : k))} activeKey={bucket} />
           </Panel>
           <Panel title="Engineer Answers" info="What engineers answered on each worksheet for “Problems Found?” and “Spare Parts was used?”. Blank = not answered.">
@@ -309,10 +309,10 @@ export function WorksheetsTab({ model, userMap }) {
       />
 
       <ChartRow columns="minmax(0, 1fr) minmax(0, 1fr)" style={{ marginTop: 10 }}>
-        <Panel title="Problem Types · All Cases" info="Every value of the case's Problem Type field across all cases. The note under each shows how many of those cases are logged (have a worksheet).">
-          <BarList items={caseProblemTypes} maxHeight={300} formatValue={(v) => `${v} case${v === 1 ? "" : "s"}`} />
+        <Panel title="Problem Types · All Jobs" info="Every value of the job's Problem Type field across all jobs. The note under each shows how many of those jobs are logged (have a worksheet).">
+          <BarList items={caseProblemTypes} maxHeight={300} formatValue={(v) => `${v} job${v === 1 ? "" : "s"}`} />
         </Panel>
-        <Panel title="Avg Time Taken by Service Type" info="Average of (Actual Visit End − Actual Visit Start + 1) per Service Type. Worksheets missing either date are left out.">
+        <Panel title="Average Visit Length by Service Type" info="Average of (Actual Visit End − Actual Visit Start + 1) per Service Type. Worksheets missing either date are left out.">
           <BarList items={timeByType} maxHeight={300} formatValue={(v) => `${fmtNum(v, 1)} d`} emptyText="No worksheets with both visit dates" />
         </Panel>
       </ChartRow>

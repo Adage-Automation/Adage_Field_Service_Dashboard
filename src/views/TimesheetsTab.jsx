@@ -45,11 +45,11 @@ export function TimesheetsTab({ model, userMap, filtered }) {
 
   const hoursItems = perEngineer.map((p, i) => ({
     key: p.id, label: p.name, value: p.hours, color: PERSON_COLORS[i % PERSON_COLORS.length], avatar: true,
-    sub: `${p.sheets} timesheet${p.sheets === 1 ? "" : "s"} · avg ${fmtNum(avg(p.hours, p.sheets), 1)} h · ${fmtNum(p.overtime, 1)} h OT · ${p.travel} travel day${p.travel === 1 ? "" : "s"}`,
+    sub: `${p.sheets} timesheet${p.sheets === 1 ? "" : "s"} · average ${fmtNum(avg(p.hours, p.sheets), 1)} h · ${fmtNum(p.overtime, 1)} h overtime · ${p.travel} travel day${p.travel === 1 ? "" : "s"}`,
   }));
   const travelItems = [...perEngineer].sort((a, b) => b.travel - a.travel).filter((p) => p.travel > 0).map((p, i) => ({
     key: p.id, label: p.name, value: p.travel, color: PERSON_COLORS[(i + 3) % PERSON_COLORS.length],
-    sub: `avg ${fmtNum(avg(p.travel, p.sheets), 1)} days per timesheet`,
+    sub: `average ${fmtNum(avg(p.travel, p.sheets), 1)} days per timesheet`,
   }));
 
   // ── Hours per task (case) and per customer ──
@@ -76,19 +76,19 @@ export function TimesheetsTab({ model, userMap, filtered }) {
       m[k].hours += r.hours; m[k].cases += 1;
     });
     return Object.entries(m).sort((a, b) => b[1].hours - a[1].hours)
-      .map(([k, v], i) => ({ key: k, label: k, value: v.hours, color: PERSON_COLORS[(i + 2) % PERSON_COLORS.length], sub: `${v.cases} case${v.cases === 1 ? "" : "s"} · avg ${fmtNum(avg(v.hours, v.cases), 1)} h per case` }));
+      .map(([k, v], i) => ({ key: k, label: k, value: v.hours, color: PERSON_COLORS[(i + 2) % PERSON_COLORS.length], sub: `${v.cases} job${v.cases === 1 ? "" : "s"} · average ${fmtNum(avg(v.hours, v.cases), 1)} h per job` }));
   }, [taskRows]);
   const projectName = taskRows[0]?.c.projectName || "Field Service";
 
   const taskColumns = [
-    { key: "case", label: "Task / Case", weight: 24, exportWidth: 44, render: (r) => <TitleCell title={r.c.name} sub={caseCustomer(r.c)} />, sortValue: (r) => r.c.name, exportValue: (r) => r.c.name },
+    { key: "case", label: "Job", weight: 24, exportWidth: 44, render: (r) => <TitleCell title={r.c.name} sub={caseCustomer(r.c)} />, sortValue: (r) => r.c.name, exportValue: (r) => r.c.name },
     { key: "project", label: "Project", weight: 9, exportWidth: 18, render: (r) => <Txt>{r.c.projectName}</Txt>, sortValue: (r) => r.c.projectName, exportValue: (r) => r.c.projectName },
-    { key: "stage", label: "Stage", weight: 8, render: (r) => <Pill color={r.c.isOpen ? T.accent : T.success} bg={r.c.isOpen ? T.accentBg : T.successBg}>{r.c.stage_id?.[1] || "—"}</Pill>, sortValue: (r) => r.c.stage_id?.[1] || "", exportValue: (r) => r.c.stage_id?.[1] || "" },
+    { key: "stage", label: "Status", weight: 8, render: (r) => <Pill color={r.c.isOpen ? T.accent : T.success} bg={r.c.isOpen ? T.accentBg : T.successBg}>{r.c.stage_id?.[1] || "—"}</Pill>, sortValue: (r) => r.c.stage_id?.[1] || "", exportValue: (r) => r.c.stage_id?.[1] || "" },
     { key: "sheets", label: "Timesheets", weight: 7, render: (r) => <Txt>{r.sheets}</Txt>, sortValue: (r) => r.sheets },
-    { key: "hours", label: "Hours Taken", weight: 8, info: "Sum of Total Working Hours across the case's timesheets: the time taken on that task.",
+    { key: "hours", label: "Working Hours", weight: 8, info: "Sum of Total Working Hours across the job's timesheets: the time taken on that task.",
       render: (r) => <span className="col-value">{fmtNum(r.hours, 1)}</span>, sortValue: (r) => r.hours },
     { key: "ot", label: "Overtime", weight: 7, render: (r) => (r.overtime ? <span style={{ fontSize: 12, fontWeight: 700, color: T.danger }}>{fmtNum(r.overtime, 1)}</span> : <Dash />), sortValue: (r) => r.overtime },
-    { key: "work", label: "Work Days", weight: 7, info: "Σ (Work End − Work Start + 1) across the case's timesheets.", render: (r) => <Txt>{r.workDays || "—"}</Txt>, sortValue: (r) => r.workDays },
+    { key: "work", label: "Work Days", weight: 7, info: "Σ (Work End − Work Start + 1) across the job's timesheets.", render: (r) => <Txt>{r.workDays || "—"}</Txt>, sortValue: (r) => r.workDays },
     { key: "travel", label: "Travel Days", weight: 7, render: (r) => <Txt>{r.travel || "—"}</Txt>, sortValue: (r) => r.travel },
     { key: "share", label: "Share of Hours", weight: 12, exportWidth: 12, info: "This task's hours as a % of all timesheet hours shown.",
       render: (r) => (
@@ -126,8 +126,8 @@ export function TimesheetsTab({ model, userMap, filtered }) {
       onClick: () => setSpecialType(leave >= hol ? "Casual Leave" : "Site Holiday"),
     });
     if (!filtered && unlinked) out.push({
-      tone: "bad", title: `${unlinked} timesheets not linked to a case`,
-      text: "Their hours can't be attributed to a case or an engineer. Link them to their task in Odoo.",
+      tone: "bad", title: `${unlinked} timesheets not linked to a job`,
+      text: "Their hours can't be attributed to a job or an engineer. Link them to their task in Odoo.",
     });
     return out.slice(0, 6);
   })();
@@ -139,21 +139,21 @@ export function TimesheetsTab({ model, userMap, filtered }) {
 
   const tsCaseTitle = (t) => t.case?.name || t.x_project_task_id?.[1] || "";
   const tsColumns = [
-    { key: "case", label: "Case / Work Done", weight: 22, exportWidth: 44,
-      info: "Case the timesheet belongs to, with its WORK DONE text underneath. Timesheets not linked to a case are marked ⚠ and only count in the unfiltered totals.",
+    { key: "case", label: "Job / Work Done", weight: 22, exportWidth: 44,
+      info: "Job the timesheet belongs to, with its WORK DONE text underneath. Timesheets not linked to a job are marked ⚠ and only count in the unfiltered totals.",
       render: (t) => (tsCaseTitle(t)
         ? <TitleCell title={tsCaseTitle(t)} sub={t.x_name || caseCustomer(t.case)} />
-        : <TitleCell title={t.x_name || "Untitled timesheet"} sub="⚠ Not linked to a case" />),
+        : <TitleCell title={t.x_name || "Untitled timesheet"} sub="⚠ Not linked to a job" />),
       sortValue: tsCaseTitle, exportValue: (t) => [tsCaseTitle(t), t.x_name].filter(Boolean).join(" — ") },
     { key: "engineer", label: "Engineer", weight: 13, exportWidth: 30,
-      info: "Timesheet's Submitted By, or the case's Service Engineers when that field is empty.",
+      info: "Timesheet's Submitted By, or the job's Service Engineers when that field is empty.",
       render: (t) => <EngineerPills ids={tsEngineers(t)} userMap={userMap} />,
       sortValue: (t) => engineerNames(tsEngineers(t), userMap).join(", "), exportValue: (t) => engineerNames(tsEngineers(t), userMap).join(", ") },
     { key: "dated", label: "Dated", weight: 8, exportWidth: 14, render: (t) => <Txt>{fmtDay(t.x_studio_dated)}</Txt>, sortValue: (t) => isoDay(t.x_studio_dated) },
     { key: "workstart", label: "Work Start", weight: 8, exportWidth: 14, render: (t) => <Txt>{fmtDay(t.x_studio_work_start_date)}</Txt>, sortValue: (t) => isoDay(t.x_studio_work_start_date) },
     { key: "workend", label: "Work End", weight: 8, exportWidth: 14, render: (t) => <Txt>{fmtDay(t.x_studio_work_end_date)}</Txt>, sortValue: (t) => isoDay(t.x_studio_work_end_date) },
-    { key: "hours", label: "Working Hrs", weight: 7, info: "Total Working Hours on the timesheet (stored as text in Odoo and converted to a number).", render: (t) => (t.hours ? <span className="col-value">{fmtNum(t.hours, 1)}</span> : <Dash />), sortValue: (t) => t.hours },
-    { key: "ot", label: "Overtime Hrs", weight: 7, info: "Total Overtime Hours on the timesheet.", render: (t) => (t.overtime ? <span style={{ fontSize: 12, fontWeight: 700, color: T.danger }}>{fmtNum(t.overtime, 1)}</span> : <Dash />), sortValue: (t) => t.overtime },
+    { key: "hours", label: "Working Hours", weight: 7, info: "Total Working Hours on the timesheet (stored as text in Odoo and converted to a number).", render: (t) => (t.hours ? <span className="col-value">{fmtNum(t.hours, 1)}</span> : <Dash />), sortValue: (t) => t.hours },
+    { key: "ot", label: "Overtime Hours", weight: 7, info: "Total Overtime Hours on the timesheet.", render: (t) => (t.overtime ? <span style={{ fontSize: 12, fontWeight: 700, color: T.danger }}>{fmtNum(t.overtime, 1)}</span> : <Dash />), sortValue: (t) => t.overtime },
     { key: "travelto", label: "Travel To", weight: 9, exportWidth: 26,
       info: "Days travelling to site: Travel To End − Travel To Start + 1. A single travel date counts as 1 day. Hover to see the dates.",
       render: (t) => (t.travelTo ? <Txt title={`${fmtDay(t.x_studio_travel_to_start_date || t.x_studio_travel_to_site)} → ${fmtDay(t.x_studio_travel_to_end_date)}`}>{t.travelTo} d · {fmtDay(t.x_studio_travel_to_start_date || t.x_studio_travel_to_site)}</Txt> : <Dash />),
@@ -178,12 +178,12 @@ export function TimesheetsTab({ model, userMap, filtered }) {
   const spColumns = [
     { key: "type", label: "Type", weight: 10, render: (s) => <SpecialTypePill type={s.x_studio_type} />, sortValue: (s) => s.x_studio_type || "" },
     { key: "date", label: "Date", weight: 10, exportWidth: 14, render: (s) => <Txt>{fmtDay(s.x_studio_date)}</Txt>, sortValue: (s) => isoDay(s.x_studio_date) },
-    { key: "hours", label: "Hours", weight: 6, info: "Hours entered on the special date (mainly for Overtime).", render: (s) => (s.x_studio_hours ? <span className="col-value">{s.x_studio_hours}</span> : <Dash />), sortValue: (s) => Number(s.x_studio_hours) || 0 },
-    { key: "case", label: "Case", weight: 26, exportWidth: 44,
+    { key: "hours", label: "Working Hours", weight: 6, info: "Hours entered on the special date (mainly for Overtime).", render: (s) => (s.x_studio_hours ? <span className="col-value">{s.x_studio_hours}</span> : <Dash />), sortValue: (s) => Number(s.x_studio_hours) || 0 },
+    { key: "case", label: "Job", weight: 26, exportWidth: 44,
       render: (s) => (s.case?.name || s.timesheet?.x_project_task_id?.[1]
         ? <TitleCell title={s.case?.name || s.timesheet?.x_project_task_id?.[1]} sub={s.timesheet?.x_name} />
-        : <TitleCell title={s.timesheet?.x_name || "Untitled timesheet"} sub="⚠ Not linked to a case" />),
-      sortValue: (s) => s.case?.name || s.timesheet?.x_name || "", exportValue: (s) => s.case?.name || `${s.timesheet?.x_name || ""} (not linked to a case)` },
+        : <TitleCell title={s.timesheet?.x_name || "Untitled timesheet"} sub="⚠ Not linked to a job" />),
+      sortValue: (s) => s.case?.name || s.timesheet?.x_name || "", exportValue: (s) => s.case?.name || `${s.timesheet?.x_name || ""} (not linked to a job)` },
     { key: "engineer", label: "Engineer", weight: 14, exportWidth: 30,
       render: (s) => <EngineerPills ids={s.timesheet ? tsEngineers(s.timesheet) : []} userMap={userMap} />,
       sortValue: (s) => engineerNames(s.timesheet ? tsEngineers(s.timesheet) : [], userMap).join(", "),
@@ -196,13 +196,13 @@ export function TimesheetsTab({ model, userMap, filtered }) {
       <KpiRow>
         <KpiCard label="Total Working Hours" value={`${fmtNum(totalHours, 1)} h`} tone="accent"
           info="Sum of each timesheet's Total Working Hours."
-          sub={`avg ${fmtNum(avg(totalHours, timesheets.length), 1)} h per timesheet · ${fmtNum(avg(totalHours, caseCount), 1)} h per case`} />
+          sub={`average ${fmtNum(avg(totalHours, timesheets.length), 1)} h per timesheet · ${fmtNum(avg(totalHours, caseCount), 1)} h per job`} />
         <KpiCard label="Overtime Hours" value={`${fmtNum(totalOvertime, 1)} h`} tone="danger"
           info="Sum of each timesheet's Total Overtime Hours."
-          sub={`avg ${fmtNum(avg(totalOvertime, timesheets.length), 1)} h per timesheet`} />
-        <KpiCard label="Travelling Days" value={`${fmtNum(totalTravel)} d`} tone="warning"
+          sub={`average ${fmtNum(avg(totalOvertime, timesheets.length), 1)} h per timesheet`} />
+        <KpiCard label="Travel Days" value={`${fmtNum(totalTravel)} d`} tone="warning"
           info="Travel To + Travel From days on each timesheet. A start → end range counts every day in it, both ends included. A single travel date counts as 1 day."
-          sub={`avg ${fmtNum(avg(totalTravel, timesheets.length), 1)} d per timesheet · ${fmtNum(avg(totalTravel, withTravel), 1)} d per trip`} />
+          sub={`average ${fmtNum(avg(totalTravel, timesheets.length), 1)} d per timesheet · ${fmtNum(avg(totalTravel, withTravel), 1)} d per trip`} />
         <KpiCard label="Special Dates" value={fmtNum(specials.length)} tone="success"
           info="Site Holiday, Casual Leave and Overtime dates entered on the timesheets."
           sub={specialSegments.map((s) => `${s.key} ${s.value}`).join(" · ") || "None recorded"} />
@@ -210,17 +210,17 @@ export function TimesheetsTab({ model, userMap, filtered }) {
 
       {!filtered && unlinked > 0 && (
         <div style={{ fontSize: 11.5, color: T.textMuted, margin: "-2px 0 10px 2px" }}>
-          {fmtNum(timesheets.length)} timesheets across {caseCount} cases · <span style={{ color: T.warning, fontWeight: 600 }}>{unlinked} not linked to a case</span>. They count toward the totals above but drop out when you filter by engineer.
+          {fmtNum(timesheets.length)} timesheets across {caseCount} jobs · <span style={{ color: T.warning, fontWeight: 600 }}>{unlinked} not linked to a job</span>. They count toward the totals above but drop out when you filter by engineer.
         </div>
       )}
 
       <InsightsCard insights={insights} />
 
       <ChartRow columns="minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr)">
-        <Panel title="Hours Worked by Engineer" info="Working hours from each engineer's timesheets. A timesheet belongs to its Submitted By person, or to the case's service engineers when that field is empty.">
+        <Panel title="Working Hours by Engineer" info="Working hours from each engineer's timesheets. A timesheet belongs to its Submitted By person, or to the job's service engineers when that field is empty.">
           <BarList items={hoursItems} maxHeight={390} formatValue={(v) => `${fmtNum(v, 1)} h`} emptyText="No timesheets" />
         </Panel>
-        <Panel title="Travelling Days by Engineer" info="Travel days (to and from site) per engineer, with their average per timesheet.">
+        <Panel title="Travel Days by Engineer" info="Travel days (to and from site) per engineer, with their average per timesheet.">
           <BarList items={travelItems} maxHeight={390} formatValue={(v) => `${v} d`} emptyText="No travel recorded" />
         </Panel>
         <Stack>
@@ -240,29 +240,29 @@ export function TimesheetsTab({ model, userMap, filtered }) {
               { label: "Overtime", value: Math.round(totalOvertime), color: T.danger },
             ]} />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 14 }}>
-              <MiniStat label="Avg hours" value={`${fmtNum(avg(totalHours, timesheets.length), 1)} h`} color={T.accent} sub="per timesheet" />
-              <MiniStat label="Avg travel" value={`${fmtNum(avg(totalTravel, timesheets.length), 1)} d`} color={T.warning} sub="per timesheet" />
-              <MiniStat label="Work days" value={fmtNum(timesheets.reduce((n, t) => n + (t.workDays || 0), 0))} sub="work start → end" />
+              <MiniStat label="Average Hours" value={`${fmtNum(avg(totalHours, timesheets.length), 1)} h`} color={T.accent} sub="per timesheet" />
+              <MiniStat label="Average Travel" value={`${fmtNum(avg(totalTravel, timesheets.length), 1)} d`} color={T.warning} sub="per timesheet" />
+              <MiniStat label="Work Days" value={fmtNum(timesheets.reduce((n, t) => n + (t.workDays || 0), 0))} sub="work start → end" />
             </div>
           </Panel>
         </Stack>
       </ChartRow>
 
       <ChartRow columns="minmax(0, 1fr) minmax(0, 1.3fr)" style={{ marginTop: 10 }}>
-        <Panel title="Time Taken to Complete" info="Hours from timesheets per case. Completed = cases in a Completed stage. All cases belong to one Odoo project, so the overall figure is the project total.">
+        <Panel title="Time Taken to Complete" info="Hours from timesheets per job. Completed = jobs in a Completed stage. All jobs belong to one Odoo project, so the overall figure is the project total.">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>
-            <MiniStat label={`Overall · ${projectName}`} value={`${fmtNum(totalHours, 0)} h`} color={T.accent} sub={`${taskRows.length} cases with timesheets`} />
-            <MiniStat label="Avg per completed case" value={`${fmtNum(avgCompleteHours, 1)} h`} color={T.success} sub={`${completedTasks.length} completed cases`} />
-            <MiniStat label="Hours on open cases" value={`${fmtNum(openTasks.reduce((n, r) => n + r.hours, 0), 0)} h`} color={T.warning} sub={`${openTasks.length} cases still open`} />
+            <MiniStat label={`Overall · ${projectName}`} value={`${fmtNum(totalHours, 0)} h`} color={T.accent} sub={`${taskRows.length} jobs with timesheets`} />
+            <MiniStat label="Average per completed job" value={`${fmtNum(avgCompleteHours, 1)} h`} color={T.success} sub={`${completedTasks.length} completed jobs`} />
+            <MiniStat label="Working Hours on In-Progress Jobs" value={`${fmtNum(openTasks.reduce((n, r) => n + r.hours, 0), 0)} h`} color={T.warning} sub={`${openTasks.length} jobs still open`} />
             <MiniStat label="Longest task" value={taskRows[0] ? `${fmtNum(taskRows[0].hours, 0)} h` : "—"} color={T.danger} sub={taskRows[0]?.c.name?.slice(0, 40) || ""} />
           </div>
         </Panel>
-        <Panel title="Hours by Customer" info="Timesheet hours grouped by the case's customer.">
+        <Panel title="Working Hours by Customer" info="Timesheet hours grouped by the job's customer.">
           <BarList items={customerItems} maxHeight={220} formatValue={(v) => `${fmtNum(v, 0)} h`} emptyText="No linked timesheets" />
         </Panel>
       </ChartRow>
 
-      <SectionLabel>Hours Taken per Task</SectionLabel>
+      <SectionLabel>Working Hours per Job</SectionLabel>
       <DataTable
         title={`Project: ${projectName}`}
         columns={taskColumns}
@@ -275,7 +275,7 @@ export function TimesheetsTab({ model, userMap, filtered }) {
         onRowClick={(r) => openCase(r.c)}
         exportName="field-service-hours-per-task"
         maxHeight={380}
-        emptyText="No timesheets linked to a case."
+        emptyText="No timesheets linked to a job."
       />
 
       <SectionLabel>Special Dates</SectionLabel>

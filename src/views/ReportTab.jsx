@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { T } from "../constants/theme";
 import { SERVICE_TYPE_COLORS, CHART_COLORS, colorFor } from "../constants/colors";
-import { tally, engineerStats, customerStats, engineerVisitStats, engineerHoursStats, wsEngineerIds, dayNum, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
-import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterSelect, FilterChip, TitleCell, Txt, BarList, InteractiveDonut, InfoDot, KpiCard, KpiRow, fmtNum, pct, plural } from "../components/ui";
+import { engineerStats, customerStats, engineerVisitStats, engineerHoursStats, wsEngineerIds, dayNum, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
+import { ChartRow, Panel, Pill, DataTable, MultiSelect, FilterSelect, FilterChip, TitleCell, Txt, BarList, InfoDot, KpiCard, KpiRow, fmtNum, pct, plural } from "../components/ui";
 import { SectionLabel, StagePill, YesNo, EngineerPills, caseCustomer, engineerNames, fmtDay, openCase, odooLinkCell, hashColor } from "./shared";
 import { TagList } from "./WorksheetsTab";
 import { odooTaskUrl, odooEmployeeUrl } from "../lib/odoo";
@@ -16,20 +16,11 @@ import { odooTaskUrl, odooEmployeeUrl } from "../lib/odoo";
 const LATE_DAYS = 60;   // open job older than this → late (amber from 31)
 const STUCK_DAYS = 30;  // no stage change for this long → stuck (amber from 15)
 const AMBER = "#D97706";
-const SHOW_TYPE_DONUTS = false; // Problem Types / Service Type pie charts, hidden for now
 const daysSince = (dt) => (dt ? Math.floor((Date.now() - Date.parse(String(dt).replace(" ", "T") + "Z")) / 86400000) : null);
 const isCompleted = (c) => /complet|done/i.test(c.stage_id?.[1] || "");
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const monthLabel = (key) => { const [y, m] = key.split("-").map(Number); return `${MONTHS[m - 1]} '${String(y).slice(2)}`; };
 const uniqSorted = (xs) => [...new Set(xs.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
-
-// Pie charts stay readable with ≤ 5 slices: keep the top 4, fold the rest into "Other".
-// "Other" keeps the folded-in items (`others`) so the donut can expand it to show what's inside.
-const topWithOther = (items, n = 4) => (items.length <= n + 1 ? items
-  : [...items.slice(0, n), {
-      key: "Other", value: items.slice(n).reduce((sum, x) => sum + x.value, 0), color: "#CBD5E1",
-      displayKey: `Other (${items.length - n})`, others: items.slice(n).sort((a, b) => b.value - a.value),
-    }]);
 
 // Completion colour: red (0%) → amber → green (100%).
 const heat = (rate, l) => `hsl(${Math.round(rate * 1.4)}, 70%, ${l}%)`;
@@ -98,7 +89,7 @@ function FilterBar({ filters, count, noun }) {
 // "?" content shared by every job list (treemap, ranking, trend, waiting, visit and Next Steps drill-downs).
 const JOBS_INFO = [
   { label: "Days Open", formula: "Days Open = Today − Created On", text: "Open jobs only; red when over 60 days (late). Completed jobs show —." },
-  { label: "Hours", formula: "Hours = Σ Total Working Hours on the job's timesheets", text: "Timesheet hours are stored as text in Odoo and parsed to numbers." },
+  { label: "Working Hours", formula: "Hours = Σ Total Working Hours on the job's timesheets", text: "Timesheet hours are stored as text in Odoo and parsed to numbers." },
   { label: "Worksheet", text: "Yes when the job has at least one Service Call Worksheet. Click a row to open the job in Odoo." },
 ];
 
@@ -330,6 +321,7 @@ const GANTT_PERIODS = [
   { value: "quarter", label: "Quarter" }, { value: "year", label: "Year" },
 ];
 const pad2 = (n) => String(n).padStart(2, "0");
+const FULL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const dayNumToISO = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
 
 // Day-number (UTC-day-since-epoch) range for a period anchored on a given date.
@@ -352,34 +344,35 @@ const ganttShiftAnchor = (anchor, period, dir) => {
 };
 
 // Odoo-style grouped Gantt: engineer group rows (collapsible) → one sub-row per customer they visited → bars.
-function EngineerGantt({ engineers, days, todayDay, totals, collapsed, onToggle }) {
+// columns: [{ key, label, top? }] — days normally, months in the Year view; bars and totals are in column units.
+function EngineerGantt({ engineers, columns, colMinW = GANTT_DAY_MIN_W, groupLabel = null, totalLabel = "Total visits per day", todayDay, totals, collapsed, onToggle }) {
   if (!engineers.length) return <div style={{ color: T.textMuted, fontSize: 12, textAlign: "center", padding: "24px 0" }}>No visits with a start date fall in this range.</div>;
-  const daysInRange = days.length;
-  const left = (d) => `${((d - 1) / daysInRange) * 100}%`;
-  const width = (n) => `${(n / daysInRange) * 100}%`;
+  const colCount = columns.length;
+  const left = (d) => `${((d - 1) / colCount) * 100}%`;
+  const width = (n) => `${(n / colCount) * 100}%`;
   const todayCol = todayDay && (
     <div aria-hidden="true" style={{ position: "absolute", top: 0, bottom: 0, left: left(todayDay), width: width(1), background: T.accentBg }} />
   );
-  // A range spanning more than one calendar month shows a small month label at each month's first column.
-  const spansMonths = days[0]?.slice(0, 7) !== days[daysInRange - 1]?.slice(0, 7);
   return (
     <div style={{ overflowX: "auto", border: `1px solid ${T.border}`, borderRadius: 8 }}>
-      <div style={{ minWidth: GANTT_ROW_LABEL_W + daysInRange * GANTT_DAY_MIN_W }}>
+      <div style={{ minWidth: GANTT_ROW_LABEL_W + colCount * colMinW }}>
         <div style={{ display: "flex", position: "sticky", top: 0, zIndex: 2, background: T.bgCardAlt, borderBottom: `1px solid ${T.border}` }}>
-          <div style={{ width: GANTT_ROW_LABEL_W, flexShrink: 0, padding: "8px 10px", fontSize: 12, fontWeight: 700, color: T.textPrimary, borderRight: `1px solid ${T.border}` }}>Workload per person</div>
-          <div style={{ flex: 1, display: "flex" }}>
-            {days.map((iso, i) => {
-              const col = i + 1, d = Number(iso.slice(8, 10)), isToday = col === todayDay;
-              const showMonth = spansMonths && (d === 1 || i === 0);
-              return (
-                <div key={iso} style={{ flex: 1, textAlign: "center", fontSize: 11, fontWeight: isToday ? 800 : 600, lineHeight: 1.3,
-                  color: isToday ? T.accent : T.textSecondary, padding: "4px 0", borderLeft: `1px solid ${T.border}`,
-                  background: isToday ? T.accentBg : "transparent" }}>
-                  {showMonth && <div style={{ fontSize: 9, fontWeight: 700, color: T.textMuted }}>{new Date(iso).toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" })}</div>}
-                  {pad2(d)}
-                </div>
-              );
-            })}
+          <div style={{ width: GANTT_ROW_LABEL_W, flexShrink: 0, padding: "8px 10px", fontSize: 12, fontWeight: 700, color: T.textPrimary, borderRight: `1px solid ${T.border}`, display: "flex", alignItems: "center" }}>Workload per person</div>
+          <div style={{ flex: 1 }}>
+            {groupLabel && <div style={{ padding: "4px 8px", fontSize: 12, fontWeight: 700, color: T.textPrimary, borderBottom: `1px solid ${T.border}` }}>{groupLabel}</div>}
+            <div style={{ display: "flex" }}>
+              {columns.map((c, i) => {
+                const isToday = i + 1 === todayDay;
+                return (
+                  <div key={c.key} style={{ flex: 1, minWidth: 0, textAlign: "center", fontSize: 11, fontWeight: isToday ? 800 : 600, lineHeight: 1.3,
+                    color: isToday ? T.accent : T.textSecondary, padding: "4px 0", borderLeft: `1px solid ${T.border}`,
+                    background: isToday ? T.accentBg : "transparent", whiteSpace: "nowrap", overflow: "hidden" }}>
+                    {c.top && <div style={{ fontSize: 9, fontWeight: 700, color: T.textMuted }}>{c.top}</div>}
+                    {c.label}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
         {engineers.map((e) => {
@@ -418,7 +411,7 @@ function EngineerGantt({ engineers, days, todayDay, totals, collapsed, onToggle 
           );
         })}
         <div style={{ display: "flex", background: T.bgCardAlt }}>
-          <div style={{ width: GANTT_ROW_LABEL_W, flexShrink: 0, padding: "8px 10px", fontSize: 12, fontWeight: 700, color: T.textPrimary, borderRight: `1px solid ${T.border}` }}>Total</div>
+          <div style={{ width: GANTT_ROW_LABEL_W, flexShrink: 0, padding: "8px 10px", fontSize: 12, fontWeight: 700, color: T.textPrimary, borderRight: `1px solid ${T.border}` }}>{totalLabel}</div>
           <div style={{ flex: 1, display: "flex", alignItems: "center", height: 32 }}>
             {totals.map((n, i) => (
               <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10.5, fontWeight: 700, color: n ? "#fff" : T.textMuted,
@@ -447,7 +440,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
   const [pCustomer, setPCustomer] = useState([]);
   const [pProblem, setPProblem] = useState([]);
   const [pEngineer, setPEngineer] = useState([]);   // Problems & Resolutions: engineer names
-  const [waitBucket, setWaitBucket] = useState(null);  // clicked age band in "How long open jobs have been waiting"
+  const [waitBucket, setWaitBucket] = useState(null);  // clicked age band in "Pending Worksheet Entries"
   const [trendMonth, setTrendMonth] = useState(null);   // clicked month in the monthly trend ("YYYY-MM")
   const [rankEngineer, setRankEngineer] = useState(null); // clicked row in Engineer Ranking & Workload (employee id)
   const [visitEngineer, setVisitEngineer] = useState(null); // clicked row in Visit Analysis by Engineer (employee id)
@@ -506,16 +499,12 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
     }
     if (recurring.length) { const [cust, prob] = recurring[0].key.split(" · "); actions.push({ id: "recurring", rows: live.filter((c) => recurring[0].ids.has(c.id)), text: `${cust} has had "${prob}" ${recurring[0].value} times. Consider a root-cause visit or a maintenance contract review.` }); }
 
-    // Problem Type split across jobs (case field)
-    const problemTypes = tally(live.map((c) => c.x_studio_problem_type || "Not set"))
-      .map((t, i) => ({ ...t, color: t.key === "Not set" ? "#94A3B8" : CHART_COLORS[i % CHART_COLORS.length] }));
-
-    return { live, open, engineers, customers: customerStats(live), backlog, months, waiting, oldestWaiting, recurring, problemTypes, actions };
+    return { live, open, engineers, customers: customerStats(live), backlog, months, waiting, oldestWaiting, recurring, actions };
   }, [cases, worksheets, userMap]);
 
   // Treemap: tiles = jobs grouped by engineer (default), customer or region; size = jobs, colour = % completed.
   const GROUP_OPTIONS = [
-    { value: "engineer", label: "Service Engineer" },
+    { value: "engineer", label: "Engineer" },
     { value: "customer", label: "Customer" },
     { value: "region", label: "Region" },
   ];
@@ -612,7 +601,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
     { key: "stage", label: "Status", weight: 11, render: (c) => <StagePill stage={c.stage_id?.[1]} />, sortValue: (c) => c.stage_id?.[1] || "", exportValue: (c) => c.stage_id?.[1] || "" },
     { key: "created", label: "Created On", weight: 11, render: (c) => <Txt>{fmtDay(c.createdISO)}</Txt>, sortValue: (c) => c.createdISO, exportValue: (c) => c.createdISO },
     { key: "age", label: "Days Open", weight: 9, info: [{ label: "Days Open", formula: "Days Open = Today − Created On", text: `Open jobs only; red when over ${LATE_DAYS} days (late). Completed jobs show —.` }], render: (c) => (c.isOpen ? <Txt style={{ color: (c.ageDays ?? 0) > LATE_DAYS ? T.danger : undefined, fontWeight: 600 }}>{c.ageDays}</Txt> : <Txt>{null}</Txt>), sortValue: (c) => (c.isOpen ? c.ageDays ?? 0 : -1), exportValue: (c) => (c.isOpen ? c.ageDays : "") },
-    { key: "hours", label: "Hours", weight: 7, info: [{ label: "Hours", formula: "Hours = Σ Total Working Hours (job's timesheets)", text: "Blank when the job has no timesheet." }], render: (c) => (c.hours ? <span className="col-value">{fmtNum(c.hours, 1)}</span> : <Txt>{null}</Txt>), sortValue: (c) => c.hours },
+    { key: "hours", label: "Working Hours", weight: 7, info: [{ label: "Working Hours", formula: "Hours = Σ Total Working Hours (job's timesheets)", text: "Blank when the job has no timesheet." }], render: (c) => (c.hours ? <span className="col-value">{fmtNum(c.hours, 1)}</span> : <Txt>{null}</Txt>), sortValue: (c) => c.hours },
     { key: "report", label: "Worksheet", weight: 11, info: [{ label: "Worksheet", formula: "Yes = job has ≥ 1 Service Call Worksheet", text: "No means the visit hasn't been written up in Odoo yet." }], render: (c) => <YesNo yes={c.hasWorksheet} />, sortValue: (c) => (c.hasWorksheet ? 1 : 0), exportValue: (c) => (c.hasWorksheet ? "Yes" : "No") },
     { key: "odoo", label: "Odoo Link", exportOnly: true, exportValue: (c) => odooLinkCell(c.id) },
   ];
@@ -628,8 +617,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
     { key: "completed", label: "Completed", weight: 7, info: [{ label: "Completed", formula: "Completed = Assigned − In Progress", text: "Assigned jobs whose stage name contains Completed or Done." }], render: (e) => <Txt>{e.completed}</Txt>, sortValue: (e) => e.completed },
     { key: "rate", label: "Logged Worksheet", weight: 14, exportWidth: 16,
       info: [
-        { label: "Worksheets logged", formula: "Logged = Assigned jobs with ≥ 1 worksheet", text: "Shown first as Logged / Assigned." },
-        { label: "Report Rate", formula: "Rate = Logged ÷ Assigned × 100", text: "Colour runs red (0%) → amber → green (100%). The table sorts by this, highest first." },
+        { label: "Worksheets logged", formula: "With Worksheet = Assigned jobs with ≥ 1 worksheet", text: "Shown first as Logged / Assigned." },
+        { label: "Worksheet Rate", formula: "Rate = Logged ÷ Assigned × 100", text: "Colour runs red (0%) → amber → green (100%). The table sorts by this, highest first." },
       ],
       render: (e) => {
         const p = pct(e.logged, e.assigned);
@@ -648,7 +637,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
       render: (e) => (e.backlog ? <Pill color={T.warning} bg={T.warningBg}>{e.backlog}</Pill> : <Txt>{0}</Txt>), sortValue: (e) => e.backlog, exportValue: (e) => e.backlog },
     { key: "hours", label: "Total Working Hours", weight: 9, info: [{ label: "Total Working Hours", formula: "Total Working Hours = Σ Total Working Hours (timesheets of their jobs)", text: "A job with two engineers counts its hours for each." }],
       render: (e) => (e.hours ? <span className="col-value">{fmtNum(e.hours, 0)}</span> : <Txt>{null}</Txt>), sortValue: (e) => e.hours, exportValue: (e) => Math.round(e.hours) },
-    { key: "last", label: "Last Logged In", weight: 9, exportWidth: 16, info: [{ label: "Last Logged In", formula: "Last Logged In = Today − date of latest worksheet", text: `Red when the engineer has never filed one, or the last was more than ${STUCK_DAYS} days ago.` }],
+    { key: "last", label: "Last Worksheet", weight: 9, exportWidth: 16, info: [{ label: "Last Worksheet", formula: "Last Worksheet = Today − date of latest worksheet", text: `Red when the engineer has never filed one, or the last was more than ${STUCK_DAYS} days ago.` }],
       render: (e) => (e.lastLoggedDays === null
         ? <span style={{ fontSize: 11.5, fontWeight: 700, color: T.danger }}>Never</span>
         : <span style={{ fontSize: 11.5, fontWeight: e.lastLoggedDays > STUCK_DAYS ? 700 : 500, color: e.lastLoggedDays > STUCK_DAYS ? T.danger : T.textSecondary }}>{e.lastLoggedDays}d ago</span>),
@@ -658,8 +647,6 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
 
   // ── Visit analysis (worksheet data) ──
   const wsEngineers = wsEngineerIds;
-  const serviceTypes = tally(worksheets.map((w) => w.x_studio_service_type || "Not set"))
-    .map((t, i) => ({ ...t, color: t.key === "Not set" ? "#94A3B8" : colorFor(t.key, SERVICE_TYPE_COLORS, i) }));
   const hasResolution = (w) => !!(w.x_studio_resolution_applied || "").trim();
   const problemRows = worksheets.filter((w) => w.problems.length || hasResolution(w)); // only worksheets with a problem or resolution
   const wsEngineerNames = (w) => engineerNames(wsEngineers(w), userMap);
@@ -705,9 +692,9 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         { label: "Missing dates", text: "A visit without a start or end date is left out of the total but still counts in Visits." },
       ],
       render: (e) => dayCell(e.totalDays), sortValue: (e) => e.totalDays ?? -1, exportValue: (e) => e.totalDays ?? "" },
-    { key: "hours", label: "Total Hours", weight: 8,
+    { key: "hours", label: "Total Working Hours", weight: 8,
       info: [
-        { label: "Total Hours", formula: "Total Hours = Σ Total Working Hours", text: "From the engineer's own timesheets, not the visit dates." },
+        { label: "Total Working Hours", formula: "Total Hours = Σ Total Working Hours", text: "From the engineer's own timesheets, not the visit dates." },
         { label: "Whose timesheets", text: "The timesheet's Submitted By, else the job's Service Engineers. Blank when the engineer has none." },
       ],
       render: (e) => dayCell(e.totalHours), sortValue: (e) => e.totalHours ?? -1, exportValue: (e) => (e.totalHours === null ? "" : Number(e.totalHours.toFixed(1))) },
@@ -723,7 +710,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
   // ── Customer insights (customer = the job's Customer field) ──
   const customerColumns = [
     { key: "name", label: "Customer", weight: 22, exportWidth: 40, render: (c) => <TitleCell title={c.name} />, sortValue: (c) => c.name, exportValue: (c) => c.name },
-    { key: "jobs", label: "Jobs", weight: 6, info: [{ label: "Jobs", formula: "Jobs = cases with this Customer", text: "Cancelled jobs excluded. The table sorts by this, highest first." }],
+    { key: "jobs", label: "Jobs", weight: 6, info: [{ label: "Jobs", formula: "Jobs = number of jobs for this Customer", text: "Cancelled jobs excluded. The table sorts by this, highest first." }],
       render: (c) => <span className="col-value">{c.jobs}</span>, sortValue: (c) => c.jobs },
     { key: "open", label: "In Progress", weight: 7, info: [{ label: "In Progress", formula: "In Progress = jobs not Completed / Done" }], render: (c) => <Txt>{c.open}</Txt>, sortValue: (c) => c.open },
     { key: "completed", label: "Completed", weight: 7, info: [{ label: "Completed", formula: "Completed = Jobs − In Progress" }], render: (c) => <Txt>{c.completed}</Txt>, sortValue: (c) => c.completed },
@@ -762,8 +749,13 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
     const rangeStart = rawStart;
     const rangeEnd = Math.min(rawEnd, rangeStart + MAX_DAYS - 1);
     const daysInRange = rangeEnd - rangeStart + 1;
+    // Year view: one column per month (like Odoo); otherwise one column per day. colOf maps a day number → 1-based column.
+    const byMonth = ganttPeriod === "year" && !ganttCustomRange;
+    const y0 = new Date(rangeStart * 86400000).getUTCFullYear();
+    const colOf = byMonth ? (n) => new Date(n * 86400000).getUTCMonth() + 1 : (n) => n - rangeStart + 1;
+    const colCount = byMonth ? 12 : daysInRange;
     const todayNum = dayNum(todayISO);
-    const todayDay = todayNum >= rangeStart && todayNum <= rangeEnd ? todayNum - rangeStart + 1 : null;
+    const todayDay = todayNum >= rangeStart && todayNum <= rangeEnd ? colOf(todayNum) : null;
     const allBars = []; // one entry per worksheet touching this range (for the Total row — not duplicated per engineer)
     const byEngineer = {}; // id -> { name, customers: { customerName -> bars[] } }
     worksheets.forEach((w) => {
@@ -775,8 +767,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
       const bar = {
         id: w.id, caseId: w.caseId, case: w.case, customer, jobName: w.case?.name || "",
         start: w.x_studio_actual_visit_start_date, end: w.x_studio_actual_visit_end_date,
-        startDay: Math.max(start, rangeStart) - rangeStart + 1,
-        endDay: Math.min(end, rangeEnd) - rangeStart + 1,
+        startDay: colOf(Math.max(start, rangeStart)),
+        endDay: colOf(Math.min(end, rangeEnd)),
       };
       allBars.push(bar);
       wsEngineerIds(w).forEach((id) => {
@@ -789,9 +781,15 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
       customers: Object.entries(e.customers).map(([name, bars]) => ({ key: name, name, ...packLanes(bars) }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     })).sort((a, b) => a.name.localeCompare(b.name));
-    const totals = Array.from({ length: daysInRange }, (_, i) => allBars.filter((b) => b.startDay <= i + 1 && b.endDay >= i + 1).length);
+    const totals = Array.from({ length: colCount }, (_, i) => allBars.filter((b) => b.startDay <= i + 1 && b.endDay >= i + 1).length);
     const days = Array.from({ length: daysInRange }, (_, i) => dayNumToISO(rangeStart + i));
-    return { engineers, days, todayDay, totals, rangeStart, rangeEnd };
+    // A day range spanning more than one calendar month shows a small month label at each month's first column.
+    const spansMonths = days[0].slice(0, 7) !== days[daysInRange - 1].slice(0, 7);
+    const columns = byMonth
+      ? FULL_MONTHS.map((label, i) => ({ key: `${y0}-${pad2(i + 1)}`, label }))
+      : days.map((iso, i) => ({ key: iso, label: pad2(Number(iso.slice(8, 10))),
+          top: spansMonths && (iso.endsWith("-01") || i === 0) ? MONTHS[Number(iso.slice(5, 7)) - 1] : null }));
+    return { engineers, columns, byMonth, groupLabel: byMonth ? String(y0) : null, todayDay, totals, rangeStart, rangeEnd };
   }, [worksheets, userMap, ganttPeriod, ganttAnchor, ganttCustomRange, todayISO]);
   const [ganttCollapsed, setGanttCollapsed] = useState(() => new Set());
   const toggleGanttEngineer = (id) => setGanttCollapsed((prev) => {
@@ -806,11 +804,11 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
     <div className="report">
       {/* ── Total cases overview ── */}
       <KpiRow>
-        <KpiCard label="Total Cases" value={fmtNum(r.live.length)} tone="accent" info="Live jobs (is_fsm), cancelled excluded." />
-        <KpiCard label="Open" value={fmtNum(r.open.length)} info="Open jobs: not in a Completed / Done stage." />
-        <KpiCard label="Completed" value={fmtNum(r.live.length - r.open.length)} tone="success" info="Live jobs whose stage is Completed / Done." />
-        <KpiCard label="Total Service Engineers" value={fmtNum(serviceEngineerCount)} tone="warning" info="hr.employee records reporting to Samaresh Dey (the Service Manager)." />
-        <KpiCard label="Assigned Engineers" value={fmtNum(r.engineers.length)} info="Of those, engineers with at least one case assigned to them." />
+        <KpiCard label="Total Jobs" value={fmtNum(r.live.length)} tone="accent" info="Live jobs (is_fsm), cancelled excluded." />
+        <KpiCard label="Jobs In Progress" value={fmtNum(r.open.length)} info="Open jobs: not in a Completed / Done stage." />
+        <KpiCard label="Jobs Completed" value={fmtNum(r.live.length - r.open.length)} tone="success" info="Live jobs whose stage is Completed / Done." />
+        <KpiCard label="Total Engineers" value={fmtNum(serviceEngineerCount)} tone="warning" info="hr.employee records reporting to Samaresh Dey (the Service Manager)." />
+        <KpiCard label="Assigned Engineers" value={fmtNum(r.engineers.length)} info="Of those, engineers with at least one job assigned to them." />
       </KpiRow>
 
       {/* ── Engineer schedule (Gantt) ── */}
@@ -821,7 +819,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
           { label: "Whose row", text: "The worksheet's Assigned Service Engineer, else the job's Service Engineers — same as Visit Analysis by Engineer." },
           { label: "Overlaps", text: "Two visits for the same engineer and customer on overlapping days stack into separate lanes within that row." },
           { label: "Bar colour & click", text: "Coloured by customer (same colour for that customer elsewhere, e.g. the Problems & Resolutions tags). Click a bar to open the job in Odoo." },
-          { label: "Total row", formula: "Total = count of visits active on that day, across every engineer", text: "Counts each worksheet once even if it has more than one engineer." },
+          { label: "Total visits per day", formula: "Total = count of visits active on that day (that month in the Year view), across every engineer", text: "Counts each worksheet once even if it has more than one engineer." },
+          { label: "Year view", text: "One column per month: a bar spans from its start month to its end month, and visits for the same customer in the same month stack into lanes." },
           { label: "Navigate", text: "← / → step by the picked period (Day/Week/Month/Quarter/Year); Today jumps back to now. Or pick an explicit From/To range and click Apply — that stays in effect until you use ←/→/Today/the period picker again." },
         ]}>
         <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
@@ -847,18 +846,18 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         <div style={{ fontSize: 11.5, color: T.textMuted, marginBottom: 10 }}>
           {fmtDay(dayNumToISO(gantt.rangeStart))} → {fmtDay(dayNumToISO(gantt.rangeEnd))} · {plural(gantt.engineers.length, "engineer")} with a visit · hover a bar for the job and dates; click to open it in Odoo; click an engineer to collapse their row.
         </div>
-        <EngineerGantt engineers={gantt.engineers} days={gantt.days} todayDay={gantt.todayDay} totals={gantt.totals} collapsed={ganttCollapsed} onToggle={toggleGanttEngineer} />
+        <EngineerGantt engineers={gantt.engineers} columns={gantt.columns} colMinW={gantt.byMonth ? 90 : GANTT_DAY_MIN_W} groupLabel={gantt.groupLabel} totalLabel={gantt.byMonth ? "Total visits per month" : "Total visits per day"} todayDay={gantt.todayDay} totals={gantt.totals} collapsed={ganttCollapsed} onToggle={toggleGanttEngineer} />
       </Panel>
 
       {/* ── Engineer's dashboard: treemap, ranking & visit analysis ── */}
       <SectionLabel>Engineer's Dashboard</SectionLabel>
-      <Panel grow={false} style={{ marginBottom: 10 }} title={tmGroupBy === "engineer" && tmView === "unassigned" ? "Unassigned Service Engineers" : `${tmGroupLabel} · completed vs assigned`}
+      <Panel grow={false} style={{ marginBottom: 10 }} title={tmGroupBy === "engineer" && tmView === "unassigned" ? "Unassigned Engineers" : `${tmGroupLabel} · completed vs assigned`}
         info={[
-          { label: "Tile size", formula: "Size = number of jobs (cancelled jobs excluded)", text: "Tiles group jobs by the picked dimension — Service Engineer, Customer or Region. A job with two engineers counts for each when grouped by engineer." },
-          { label: "Tile colour & pointer", formula: "Completion % = Completed jobs / All jobs × 100", text: "Red at 0% → amber → green at 100%. Completed = stage name contains Completed or Done." },
-          { label: "Tile details", formula: "Hours = Σ Total Working Hours on the tile's jobs", text: "Worksheets = jobs with at least one worksheet." },
+          { label: "Box size", formula: "Size = number of jobs (cancelled jobs excluded)", text: "Tiles group jobs by the picked dimension — Service Engineer, Customer or Region. A job with two engineers counts for each when grouped by engineer." },
+          { label: "Box colour & pointer", formula: "Completion % = Completed jobs / All jobs × 100", text: "Red at 0% → amber → green at 100%. Completed = stage name contains Completed or Done." },
+          { label: "Box details", formula: "Hours = Σ Total Working Hours on the tile's jobs", text: "Worksheets = jobs with at least one worksheet." },
           { label: "Navigate", text: "Click a tile to drill in: grouped by engineer, you see the customers they serve; grouped by customer or region, you see the engineers involved. Click a breakdown row (or \"View all jobs\") to list the actual jobs. Click the tile again to go back to all. Switch the grouping with the dropdown. Year / Month / Customer / Problem Type filters apply to the treemap only." },
-          { label: "Unassigned Service Engineers", text: "Roster employees reporting to the Service Manager with zero live jobs (cancelled excluded). No completion rate or hours to show yet, so their tiles are plain and grey." },
+          { label: "Unassigned Engineers", text: "Roster employees reporting to the Service Manager with zero live jobs (cancelled excluded). No completion rate or hours to show yet, so their tiles are plain and grey." },
         ]}>
         <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
           <FilterSelect value={tmGroupBy} onChange={(v) => { setTmGroupBy(v); setTmKey(null); setTmPeek(null); setTmView("assigned"); setTmDrillKey(null); }} options={GROUP_OPTIONS} prefix="Group by: " width={200} />
@@ -866,7 +865,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
             {tmGroupBy === "engineer" ? (
               <>
                 {viewTab("All Engineers", tmView === "assigned", () => { setTmView("assigned"); setTmKey(null); setTmDrillKey(null); })}
-                {viewTab(`Unassigned Service Engineers${unassignedEngineers.length ? ` (${unassignedEngineers.length})` : ""}`, tmView === "unassigned", () => { setTmView("unassigned"); setTmKey(null); setTmDrillKey(null); })}
+                {viewTab(`Unassigned Engineers${unassignedEngineers.length ? ` (${unassignedEngineers.length})` : ""}`, tmView === "unassigned", () => { setTmView("unassigned"); setTmKey(null); setTmDrillKey(null); })}
                 {tmView === "assigned" && tmSelectedLabel && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{tmSelectedLabel}</span></>}
               </>
             ) : (
@@ -978,8 +977,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
             { label: "Ranking", formula: "Report Rate = Worksheets logged / Jobs assigned", text: "Sorted highest rate first (lifetime); click the header again to see the lowest first." },
             { label: "Workload", formula: "Assigned = lifetime jobs · In Progress = jobs in flight now", text: "Assigned is their total-ever caseload; In Progress is what's actually on their plate today." },
             { label: "Unlogged Worksheet", formula: "Unlogged Worksheet = In Progress jobs with no worksheet", text: "Work done or in progress that hasn't been written up yet." },
-            { label: "Last Logged In", formula: "Last Logged In = Today − date of latest worksheet", text: `Red when the engineer has never filed one, or the last was more than ${STUCK_DAYS} days ago.` },
-            { label: "Sort & drill in", text: "Click any column header to re-sort, or click an engineer's row to list their jobs below." },
+            { label: "Last Worksheet", formula: "Last Worksheet = Today − date of latest worksheet", text: `Red when the engineer has never filed one, or the last was more than ${STUCK_DAYS} days ago.` },
+            { label: "Sort & details", text: "Click any column header to re-sort, or click an engineer's row to list their jobs below." },
           ]} /></span>}
         />
       </div>
@@ -992,15 +991,15 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
 
       {/* ── Trends ── */}
       <ChartRow columns="minmax(0, 1.4fr) minmax(0, 1fr)">
-        <Panel title="Monthly Trend · Cases Created" info={[
+        <Panel title="Monthly Trend · Jobs Created" info={[
           { label: "Bars", formula: "Per month: jobs with ≥ 1 worksheet vs jobs with none", text: "Month = the job's Created On (else Odoo's create date). Last 12 months with data; cancelled jobs excluded." },
-          { label: "Read-out", formula: "With-worksheet % = With / (With + Without) × 100", text: "Hover a month for its split; click it to list that month's jobs." },
+          { label: "Summary", formula: "With-worksheet % = With / (With + Without) × 100", text: "Hover a month for its split; click it to list that month's jobs." },
         ]}>
           <MonthlyBars months={r.months} activeKey={trendMonth} onPick={(k) => setTrendMonth((v) => (v === k ? null : k))} />
         </Panel>
-        <Panel title="How long open jobs have been waiting" info={[
+        <Panel title="Pending Worksheet Entries" info={[
           { label: "Who's counted", formula: "Open jobs with no worksheet yet", text: "Open = not in a Completed / Done / Cancelled stage." },
-          { label: "Bands", formula: "Days waiting = Today − Created On", text: "Grouped 0–30, 31–60, 61–90 and 90+ days. Click a band to list its jobs." },
+          { label: "Age groups", formula: "Days waiting = Today − Created On", text: "Grouped 0–30, 31–60, 61–90 and 90+ days. Click a band to list its jobs." },
           { label: "Waiting longest", text: "The open job without a worksheet that was created earliest. Click its name to open it in Odoo." },
         ]}>
           <BarList items={r.waiting} formatValue={(v) => plural(v, "job")}
@@ -1041,7 +1040,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
               { label: "Visits (Worksheets)", formula: "Jobs with ≥ 1 worksheet + jobs without one", text: "Click With worksheet or Without worksheet to rank by only that." },
               { label: "Visit Days", formula: "Σ (Visit End − Visit Start + 1) over the jobs' worksheets" },
               { label: "Working Hours", formula: "Σ Total Working Hours (timesheets of their jobs)" },
-              { label: "Drill in", text: "Hover a bar for the customer's summary; click it to list their jobs." },
+              { label: "Click for details", text: "Hover a bar for the customer's summary; click it to list their jobs." },
             ]}>
             <CustomerBars customers={r.customers} metric={custMetric} part={custPart} onPart={setCustPart} top={custTop} activeKey={custPick} onPick={(k) => setCustPick((v) => (v === k ? null : k))} />
           </Panel>
@@ -1090,7 +1089,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
           emptyText="No worksheets yet."
           toolbar={<TableHint text="Click an engineer to see their jobs" info={[
             { label: "Total Days", formula: "Total Days = Σ (Visit End − Visit Start + 1)", text: "Per worksheet, both days counted. Visits missing a date are left out of the total." },
-            { label: "Total Hours", formula: "Total Hours = Σ Total Working Hours", text: "From the engineer's own timesheets (Submitted By, else the job's Service Engineers)." },
+            { label: "Total Working Hours", formula: "Total Hours = Σ Total Working Hours", text: "From the engineer's own timesheets (Submitted By, else the job's Service Engineers)." },
             { label: "Problems Identified", formula: "Visits with ≥ 1 problem tag, of all Visits", text: "Red when none of their visits record a problem, green when all do." },
             { label: "Who a visit counts for", text: "The worksheet's Assigned Service Engineer, else the job's Service Engineers. Sorted most total visit days first; click a header to re-sort." },
           ]} />}
@@ -1125,18 +1124,6 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         />
       </div>
 
-      {/* ── Problem & service types (hidden for now: set SHOW_TYPE_DONUTS = true to bring back), next steps ── */}
-      {SHOW_TYPE_DONUTS && <SectionLabel>Problem Types &amp; Service Types</SectionLabel>}
-      {SHOW_TYPE_DONUTS && <ChartRow columns="minmax(0, 1fr) minmax(0, 1fr)">
-        <InteractiveDonut title="Problem Types" infoText={[
-          { label: "Slices", formula: "Slice = jobs with that Problem Type", text: "From the job's Problem Type field; empty = Not set. Cancelled jobs excluded." },
-          { label: "Other", text: "The top 4 types are shown; the rest are grouped as Other. Click Other to see what's inside." },
-        ]} centerLabel="jobs" unit="jobs" segments={topWithOther(r.problemTypes)} />
-        <InteractiveDonut title="Service Type" infoText={[
-          { label: "Slices", formula: "Slice = worksheets with that Service Type", text: "The Service Type picked on each Service Call Worksheet; empty = Not set." },
-          { label: "Other", text: "The top 4 types are shown; the rest are grouped as Other. Click Other to see what's inside." },
-        ]} centerLabel="worksheets" unit="worksheets" segments={topWithOther(serviceTypes)} />
-      </ChartRow>}
       {/* ── Next steps ── */}
       <div className="card report-avoid-break" style={{ padding: "14px 18px", marginBottom: 10, marginTop: 18, background: T.accentBg, border: `1px solid ${T.accentBdr}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: T.accent, letterSpacing: "0.8px", textTransform: "uppercase", fontWeight: 700, marginBottom: 8 }}>

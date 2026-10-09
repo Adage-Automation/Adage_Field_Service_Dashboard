@@ -68,12 +68,12 @@ export function YesNo({ yes, yesLabel = "Yes", noLabel = "No", noColor = T.dange
 // Document-check flag for a case (see buildModel in lib/derive.js)
 export const FLAG_META = {
   no_mom:       { label: "No MoM",       short: "Worksheet · no MoM", color: "#DC2626", bg: "#FEE2E2" },
-  no_worksheet: { label: "No Worksheet", short: "Docs · no worksheet", color: "#EA580C", bg: "#FFEDD5" },
+  no_worksheet: { label: "No Worksheet", short: "Documents · no worksheet", color: "#EA580C", bg: "#FFEDD5" },
 };
 
 export function FlagCell({ c, showReason = true }) {
   if (!c.flag) {
-    if (c.attachedFiles) return <Pill color={T.success} bg={T.successBg} title={`${c.attachedFiles} file(s) in the case's Attachments field`}>✓ Attached</Pill>;
+    if (c.attachedFiles) return <Pill color={T.success} bg={T.successBg} title={`${c.attachedFiles} file(s) in the job's Attachments field`}>✓ Attached</Pill>;
     return c.hasWorksheet || c.hasAnyDoc
       ? <Pill color={T.success} bg={T.successBg}>✓ OK</Pill>
       : <Pill color={T.textMuted} bg={T.bgInput} title="No worksheet and no documents yet">Not started</Pill>;
@@ -91,15 +91,15 @@ export const flagExport = (c) => (c.flag ? `${FLAG_META[c.flag].label}: ${c.flag
 
 // Flag & Reason, Case, Service Engineers, Stage: the leading columns of every flagged-records table
 export const flagCaseColumns = (userMap) => [
-  { key: "flag", label: "Flag & Reason", weight: 20, exportWidth: 60,
+  { key: "flag", label: "Issue & Reason", weight: 20, exportWidth: 60,
     info: "⚑ No MoM: a worksheet is filled but no MoM (AMC) or MoM Commissioning is recorded.\n⚑ No Worksheet: a MoM, Commissioning Certificate or Documents-section file is recorded but no worksheet is filled.\n✓ Attached: files in the case's Attachments field, so it is never flagged.\n✓ OK: worksheet and MoM are both present.\nNot started: neither yet.",
     render: (c) => <FlagCell c={c} />,
     sortValue: (c) => (c.flag === "no_mom" ? 0 : c.flag === "no_worksheet" ? 1 : c.hasMom || c.attachedFiles ? 3 : 2), exportValue: flagExport },
-  { key: "case", label: "Case", weight: 23, exportWidth: 44, render: (c) => <TitleCell title={c.name} sub={caseCustomer(c)} />, sortValue: (c) => c.name },
-  { key: "engineers", label: "Service Engineers", weight: 14, exportWidth: 32,
+  { key: "case", label: "Job", weight: 23, exportWidth: 44, render: (c) => <TitleCell title={c.name} sub={caseCustomer(c)} />, sortValue: (c) => c.name },
+  { key: "engineers", label: "Engineers", weight: 14, exportWidth: 32,
     render: (c) => <EngineerPills ids={c.engineerIds} userMap={userMap} />,
     sortValue: (c) => engineerNames(c.engineerIds, userMap).join(", "), exportValue: (c) => engineerNames(c.engineerIds, userMap).join(", ") },
-  { key: "stage", label: "Stage", weight: 8, render: (c) => <StagePill stage={c.stage_id?.[1]} />, sortValue: (c) => c.stage_id?.[1] || "" },
+  { key: "stage", label: "Status", weight: 8, render: (c) => <StagePill stage={c.stage_id?.[1]} />, sortValue: (c) => c.stage_id?.[1] || "" },
 ];
 
 export const openCase = (c) => c?.id && window.open(odooTaskUrl(c.id), "_blank", "noopener,noreferrer");

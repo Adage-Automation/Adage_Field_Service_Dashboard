@@ -66,8 +66,8 @@ export function OverviewTab({ model, userMap }) {
     return Object.keys(m).sort().slice(-12).map((k) => ({
       key: k, label: monthLabel(k),
       parts: [
-        { key: "logged", label: "Logged", value: m[k].logged, color: LOGGED },
-        { key: "unlogged", label: "Not logged", value: m[k].unlogged, color: UNLOGGED },
+        { key: "logged", label: "With Worksheet", value: m[k].logged, color: LOGGED },
+        { key: "unlogged", label: "Without Worksheet", value: m[k].unlogged, color: UNLOGGED },
       ],
     }));
   }, [cases]);
@@ -93,7 +93,7 @@ export function OverviewTab({ model, userMap }) {
       .map(([r, v]) => ({
         key: r, label: r, value: v.total,
         color: pct(v.logged, v.total) >= 50 ? LOGGED : pct(v.logged, v.total) >= 25 ? UNLOGGED : T.danger,
-        sub: `${v.logged} logged · ${v.total - v.logged} not logged · ${pct(v.logged, v.total)}% logging rate`,
+        sub: `${v.logged} logged · ${v.total - v.logged} not logged · ${pct(v.logged, v.total)}% worksheet rate`,
         rate: v.total ? v.logged / v.total : 0, total: v.total,
       }));
   }, [cases]);
@@ -102,7 +102,7 @@ export function OverviewTab({ model, userMap }) {
     .sort((a, b) => b.rate - a.rate || b.worksheets - a.worksheets || b.assigned - a.assigned || a.name.localeCompare(b.name))
     .map((p) => ({
       key: p.id, label: p.name, value: p.rate, max: 1, color: colorOf[p.id],
-      sub: `${p.logged} of ${p.assigned} cases logged · ${plural(p.worksheets, "worksheet")}${p.lastLogged ? ` · last ${p.lastLoggedDays}d ago` : ""}`,
+      sub: `${p.logged} of ${p.assigned} jobs with a worksheet · ${plural(p.worksheets, "worksheet")}${p.lastLogged ? ` · last ${p.lastLoggedDays}d ago` : ""}`,
     }));
 
   // ── Key insights (generated from the numbers above) ──
@@ -111,15 +111,15 @@ export function OverviewTab({ model, userMap }) {
     if (cases.length) {
       out.push({
         tone: loggedPct >= 70 ? "good" : loggedPct >= 40 ? "warn" : "bad",
-        title: `${loggedPct}% of cases have a worksheet`,
-        text: `${logged} of ${cases.length} cases are logged in Odoo. ${backlog.length} open and ${completedUnlogged.length} completed cases have none.`,
+        title: `${loggedPct}% of jobs have a worksheet`,
+        text: `${logged} of ${cases.length} jobs have a worksheet in Odoo. ${backlog.length} open and ${completedUnlogged.length} completed jobs have none.`,
         onClick: () => { setLoggedFilter("not_logged"); scrollTo(recordsRef); },
       });
     }
     if (completedUnlogged.length) {
       out.push({
         tone: "bad",
-        title: `${plural(completedUnlogged.length, "completed case")} never logged`,
+        title: `${plural(completedUnlogged.length, "completed job")} with no worksheet`,
         text: "The work is marked completed but there's no service worksheet. These reports are missing for the customer and for billing.",
         onClick: () => { setLoggedFilter("not_logged"); setFilterStage(uniq(completedUnlogged.map((c) => c.stage_id?.[1]))); scrollTo(recordsRef); },
       });
@@ -128,8 +128,8 @@ export function OverviewTab({ model, userMap }) {
     if (topBacklog?.backlog > 0) {
       out.push({
         tone: "warn",
-        title: `Largest unlogged backlog: ${topBacklog.name}`,
-        text: `${plural(topBacklog.backlog, "open case")} with no worksheet${topBacklog.oldestBacklog ? `, the oldest ${topBacklog.oldestBacklog} days old` : ""}. ${topBacklog.logged} of ${topBacklog.assigned} assigned cases logged.`,
+        title: `Most open jobs without a worksheet: ${topBacklog.name}`,
+        text: `${plural(topBacklog.backlog, "open job")} with no worksheet${topBacklog.oldestBacklog ? `, the oldest ${topBacklog.oldestBacklog} days old` : ""}. ${topBacklog.logged} of ${topBacklog.assigned} assigned jobs with a worksheet.`,
         onClick: () => { setFilterEngineer(topBacklog.id); setLoggedFilter("not_logged"); scrollTo(recordsRef); },
       });
     }
@@ -137,7 +137,7 @@ export function OverviewTab({ model, userMap }) {
     if (zero.length) {
       out.push({
         tone: "bad",
-        title: `${plural(zero.length, "engineer")} with 3+ cases ${zero.length === 1 ? "has" : "have"} logged nothing`,
+        title: `${plural(zero.length, "engineer")} with 3+ jobs ${zero.length === 1 ? "has" : "have"} filed no worksheets`,
         text: zero.slice(0, 4).map((p) => `${p.name} (${p.assigned})`).join(", ") + (zero.length > 4 ? ` and ${zero.length - 4} more` : "") + ".",
       });
     }
@@ -145,7 +145,7 @@ export function OverviewTab({ model, userMap }) {
     if (old.length && oldestBacklog) {
       out.push({
         tone: "warn",
-        title: `${plural(old.length, "open case")} unlogged for 60+ days`,
+        title: `${plural(old.length, "open job")} without a worksheet for 60+ days`,
         text: `Oldest: “${oldestBacklog.name}” (${caseCustomer(oldestBacklog) || "no customer"}), ${oldestBacklog.ageDays} days since it was created.`,
         onClick: () => { setFilterAge("61–90 days"); setLoggedFilter("all"); scrollTo(recordsRef); },
       });
@@ -163,7 +163,7 @@ export function OverviewTab({ model, userMap }) {
       out.push({
         tone: "good",
         title: `Best logging discipline: ${best.name}`,
-        text: `${best.logged} of ${best.assigned} cases logged (${Math.round(best.rate * 100)}%), ${plural(best.worksheets, "worksheet")} filed${best.lastLogged ? `, last one ${best.lastLoggedDays} days ago` : ""}.`,
+        text: `${best.logged} of ${best.assigned} jobs with a worksheet (${Math.round(best.rate * 100)}%), ${plural(best.worksheets, "worksheet")} filed${best.lastLogged ? `, last one ${best.lastLoggedDays} days ago` : ""}.`,
         onClick: () => { setFilterEngineer(best.id); scrollTo(recordsRef); },
       });
     }
@@ -172,7 +172,7 @@ export function OverviewTab({ model, userMap }) {
       out.push({
         tone: weakRegion.rate < 0.25 ? "bad" : "info",
         title: `Lowest logging region: ${weakRegion.key}`,
-        text: `${Math.round(weakRegion.rate * 100)}% of its ${weakRegion.total} cases have a worksheet.`,
+        text: `${Math.round(weakRegion.rate * 100)}% of its ${weakRegion.total} jobs have a worksheet.`,
         onClick: () => { setFilterRegion([weakRegion.key]); scrollTo(recordsRef); },
       });
     }
@@ -200,7 +200,7 @@ export function OverviewTab({ model, userMap }) {
 
   const columns = [
     { key: "created", label: "Created On", weight: 9, exportWidth: 14,
-      info: "The case's Created On date (or Odoo's creation date when empty). The grey line underneath shows the case's age in days.",
+      info: "The job's Created On date (or Odoo's creation date when empty). The grey line underneath shows the job's age in days.",
       render: (c) => (
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
           <Txt>{fmtDay(c.createdISO)}</Txt>
@@ -208,7 +208,7 @@ export function OverviewTab({ model, userMap }) {
         </div>
       ),
       sortValue: (c) => c.createdISO, exportValue: (c) => c.createdISO },
-    { key: "case", label: "Case", weight: 22, exportWidth: 44,
+    { key: "case", label: "Job", weight: 22, exportWidth: 44,
       info: "Field Service task title. The grey line underneath shows Control No. · SCRN.",
       render: (c) => <TitleCell title={c.name} sub={[c.x_studio_control_no, c.x_studio_scrn].filter(Boolean).join(" · ") || null} />,
       sortValue: (c) => c.name, exportValue: (c) => c.name },
@@ -216,28 +216,28 @@ export function OverviewTab({ model, userMap }) {
     { key: "enduser", label: "End User", weight: 11, exportWidth: 28, render: (c) => <Txt>{caseEndUser(c)}</Txt>, sortValue: caseEndUser },
     { key: "region", label: "Region", weight: 9, render: (c) => <TagPill value={c.x_studio_regions} />, sortValue: (c) => c.x_studio_regions || "" },
     { key: "problem", label: "Problem Type", weight: 10, exportWidth: 22, render: (c) => <Txt>{c.x_studio_problem_type}</Txt>, sortValue: (c) => c.x_studio_problem_type || "" },
-    { key: "engineers", label: "Service Engineers", weight: 13, exportWidth: 32,
-      info: "People in the case's Service Engineers field. These are the assigned persons used for every per-engineer count.",
+    { key: "engineers", label: "Engineers", weight: 13, exportWidth: 32,
+      info: "People in the job's Service Engineers field. These are the assigned persons used for every per-engineer count.",
       render: (c) => <EngineerPills ids={c.engineerIds} userMap={userMap} />,
       sortValue: (c) => engineerNames(c.engineerIds, userMap).join(", "), exportValue: (c) => engineerNames(c.engineerIds, userMap).join(", ") },
-    { key: "stage", label: "Stage", weight: 9, info: "Odoo stage of the task (In Progress / Completed).",
+    { key: "stage", label: "Status", weight: 9, info: "Odoo stage of the task (In Progress / Completed).",
       render: (c) => <StagePill stage={c.stage_id?.[1]} />, sortValue: (c) => c.stage_id?.[1] || "" },
     { key: "ws", label: "Worksheets", weight: 7,
-      info: "Number of Service Call Worksheets on the case. 1 or more means the case is logged.",
+      info: "Number of Service Call Worksheets on the job. 1 or more means the job has a worksheet.",
       render: (c) => <CountBadge n={c.worksheets.length} />, sortValue: (c) => c.worksheets.length },
-    { key: "mom", label: "MoM", weight: 8, exportWidth: 22,
-      info: "Type of MoM recorded on the case: AMC = MoM (AMC), C = MoM Commissioning. Hover a tag for the number of entries.",
+    { key: "mom", label: "Minutes of Meeting (MoM)", weight: 8, exportWidth: 22,
+      info: "Type of MoM recorded on the job: AMC = Minutes of Meeting (AMC), C = Minutes of Meeting (Commissioning). Hover a tag for the number of entries.",
       render: (c) => (c.momTypes.length ? (
         <div style={{ display: "flex", gap: 3 }}>
-          {c.momAmc.length > 0 && <Pill color="#02818A" title={`${c.momAmc.length} MoM (AMC) entr${c.momAmc.length === 1 ? "y" : "ies"}`}>AMC</Pill>}
-          {c.momComm.length > 0 && <Pill color="#7C3AED" title={`${c.momComm.length} MoM Commissioning entr${c.momComm.length === 1 ? "y" : "ies"}`}>C</Pill>}
+          {c.momAmc.length > 0 && <Pill color="#02818A" title={`${c.momAmc.length} Minutes of Meeting (AMC) entr${c.momAmc.length === 1 ? "y" : "ies"}`}>AMC</Pill>}
+          {c.momComm.length > 0 && <Pill color="#7C3AED" title={`${c.momComm.length} Minutes of Meeting (Commissioning) entr${c.momComm.length === 1 ? "y" : "ies"}`}>C</Pill>}
         </div>
       ) : <Txt>{null}</Txt>),
       sortValue: (c) => c.momTypes.join(" + "), exportValue: (c) => c.momTypes.join(" + ") },
-    { key: "hours", label: "Hours", weight: 6,
-      info: "Sum of Total Working Hours across the case's timesheets.",
+    { key: "hours", label: "Working Hours", weight: 6,
+      info: "Sum of Total Working Hours across the job's timesheets.",
       render: (c) => (c.hours ? <span className="col-value">{fmtNum(c.hours, 1)}</span> : <Txt>{null}</Txt>), sortValue: (c) => c.hours },
-    { key: "flag", label: "Doc Check", weight: 12, exportWidth: 60,
+    { key: "flag", label: "Document Check", weight: 12, exportWidth: 60,
       info: "⚑ No MoM: a worksheet is filled but no MoM is recorded.\n⚑ No Worksheet: a MoM or other document (Commissioning Certificate, Documents section) is recorded but no worksheet.\n✓ OK: consistent.\nNot started: neither yet. Hover a flag to see the reason.",
       render: (c) => <FlagCell c={c} showReason={false} />,
       sortValue: (c) => (c.flag === "no_mom" ? 0 : c.flag === "no_worksheet" ? 1 : c.hasWorksheet ? 3 : 2), exportValue: flagExport },
@@ -246,7 +246,7 @@ export function OverviewTab({ model, userMap }) {
 
   // ── Engineer workload table ──
   const workloadColumns = [
-    { key: "name", label: "Service Engineer", weight: 20, exportWidth: 30,
+    { key: "name", label: "Engineer", weight: 20, exportWidth: 30,
       render: (p) => (
         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <Avatar name={p.name} color={colorOf[p.id]} size={26} />
@@ -254,23 +254,23 @@ export function OverviewTab({ model, userMap }) {
         </div>
       ),
       sortValue: (p) => p.name },
-    { key: "assigned", label: "Assigned", weight: 7, info: "Cases where this person is in Service Engineers.",
+    { key: "assigned", label: "Assigned", weight: 7, info: "Jobs where this person is in Service Engineers.",
       render: (p) => <span className="col-value">{p.assigned}</span>, sortValue: (p) => p.assigned },
-    { key: "open", label: "Open", weight: 6, info: "Assigned cases not yet in a Completed stage.",
+    { key: "open", label: "In Progress", weight: 6, info: "Assigned jobs not yet in a Completed stage.",
       render: (p) => <Txt>{p.open}</Txt>, sortValue: (p) => p.open },
-    { key: "completed", label: "Completed", weight: 7, info: "Assigned cases in a Completed stage.",
+    { key: "completed", label: "Completed", weight: 7, info: "Assigned jobs in a Completed stage.",
       render: (p) => <Txt>{p.completed}</Txt>, sortValue: (p) => p.completed },
-    { key: "rate", label: "Logging Rate", weight: 15, exportWidth: 14,
-      info: "Share of assigned cases that have at least one worksheet. Green = logged, amber = not logged.",
+    { key: "rate", label: "Worksheet Rate", weight: 15, exportWidth: 14,
+      info: "Share of assigned jobs that have at least one worksheet. Green = with worksheet, amber = without.",
       render: (p) => (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ flex: 1 }}><MiniStack parts={[{ label: "Logged", value: p.logged, color: LOGGED }, { label: "Not logged", value: p.assigned - p.logged, color: UNLOGGED }]} /></div>
+          <div style={{ flex: 1 }}><MiniStack parts={[{ label: "With Worksheet", value: p.logged, color: LOGGED }, { label: "Without Worksheet", value: p.assigned - p.logged, color: UNLOGGED }]} /></div>
           <span style={{ fontSize: 11.5, fontWeight: 700, color: p.rate >= 0.7 ? T.success : p.rate >= 0.4 ? T.warning : T.danger, width: 34, textAlign: "right" }}>{Math.round(p.rate * 100)}%</span>
         </div>
       ),
       sortValue: (p) => p.rate, exportValue: (p) => `${Math.round(p.rate * 100)}%` },
-    { key: "backlog", label: "Unlogged Backlog", weight: 10,
-      info: "Open cases with no worksheet yet: the engineer's to-do list. The grey line shows the oldest one's age.",
+    { key: "backlog", label: "In-Progress Jobs Without Worksheet", weight: 10,
+      info: "Open jobs with no worksheet yet: the engineer's to-do list. The grey line shows the oldest one's age.",
       render: (p) => (p.backlog ? (
         <div style={{ display: "flex", flexDirection: "column" }}>
           <span><Pill color={T.warning} bg={T.warningBg}>{p.backlog} open</Pill></span>
@@ -278,15 +278,15 @@ export function OverviewTab({ model, userMap }) {
         </div>
       ) : <Pill color={T.success} bg={T.successBg}>clear</Pill>),
       sortValue: (p) => p.backlog, exportValue: (p) => p.backlog },
-    { key: "doneUnlogged", label: "Done, No Worksheet", weight: 9,
-      info: "Cases already Completed that never got a worksheet.",
+    { key: "doneUnlogged", label: "Completed, No Worksheet", weight: 9,
+      info: "Jobs already Completed that never got a worksheet.",
       render: (p) => (p.completedUnlogged ? <Pill color={T.danger} bg={T.dangerBg}>{p.completedUnlogged}</Pill> : <Txt>{0}</Txt>),
       sortValue: (p) => p.completedUnlogged },
-    { key: "flagged", label: "Flagged", weight: 6, info: "Cases with a paperwork mismatch (worksheet without MoM, or MoM/document without worksheet).",
+    { key: "flagged", label: "Paperwork Issues", weight: 6, info: "Jobs with a paperwork mismatch (worksheet without MoM, or MoM/document without worksheet).",
       render: (p) => (p.flagged ? <Pill color={T.danger} bg={T.dangerBg}>⚑ {p.flagged}</Pill> : <Txt>{0}</Txt>), sortValue: (p) => p.flagged },
-    { key: "hours", label: "Hours", weight: 6, info: "Timesheet working hours on the engineer's cases.",
+    { key: "hours", label: "Working Hours", weight: 6, info: "Timesheet working hours on the engineer's jobs.",
       render: (p) => (p.hours ? <span className="col-value">{fmtNum(p.hours, 0)}</span> : <Txt>{null}</Txt>), sortValue: (p) => p.hours },
-    { key: "last", label: "Last Logged", weight: 9, exportWidth: 14,
+    { key: "last", label: "Last Worksheet", weight: 9, exportWidth: 14,
       info: "When the engineer's most recent worksheet was created in Odoo. A recent date means they log regularly.",
       render: (p) => (p.lastLogged ? (
         <div style={{ display: "flex", flexDirection: "column" }}>
@@ -300,9 +300,9 @@ export function OverviewTab({ model, userMap }) {
   // ── Flagged table ──
   const flaggedColumns = [
     ...flagCaseColumns(userMap),
-    { key: "ws", label: "Worksheets", weight: 8, info: "Number of Service Call Worksheets on the case.",
+    { key: "ws", label: "Worksheets", weight: 8, info: "Number of Service Call Worksheets on the job.",
       render: (c) => <CountBadge n={c.worksheets.length} />, sortValue: (c) => c.worksheets.length },
-    { key: "docs", label: "MoM / Docs", weight: 10,
+    { key: "docs", label: "MoM / Documents", weight: 10,
       info: "MoM (AMC) + MoM Commissioning rows. \"+N other\" counts other documents (Commissioning Certificate, Documents section).",
       render: (c) => (
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -327,44 +327,44 @@ export function OverviewTab({ model, userMap }) {
   return (
     <div>
       <KpiRow>
-        <KpiCard label="Total Cases" value={fmtNum(cases.length)} tone="accent"
+        <KpiCard label="Total Jobs" value={fmtNum(cases.length)} tone="accent"
           info="Every Field Service task (project.task with Field Service enabled) recorded in Odoo."
           sub={stageCounts.map(([s, n]) => `${s} ${n}`).join(" · ") || null} />
-        <KpiCard label="Logged Cases" value={`${fmtNum(logged)}`} tone="success"
-          info="Cases with at least one Service Call Worksheet filled in by the service engineer. Click to filter the list."
-          sub={`${loggedPct}% logging rate · ${fmtNum(worksheets.length)} worksheets`}
+        <KpiCard label="Jobs With Worksheet" value={`${fmtNum(logged)}`} tone="success"
+          info="Jobs with at least one Service Call Worksheet filled in by the service engineer. Click to filter the list."
+          sub={`${loggedPct}% worksheet rate · ${fmtNum(worksheets.length)} worksheets`}
           onClick={() => { setLoggedFilter((v) => (v === "logged" ? "all" : "logged")); scrollTo(recordsRef); }} active={loggedFilter === "logged"} />
-        <KpiCard label="Unlogged Backlog" value={fmtNum(backlog.length)} tone="warning"
-          info="Open cases (not completed) with no worksheet yet. This is the work still to be reported. Click to list them."
-          sub={`of ${openCases.length} open cases${oldestBacklog?.ageDays != null ? ` · oldest ${oldestBacklog.ageDays}d` : ""}`}
+        <KpiCard label="In-Progress Jobs Without Worksheet" value={fmtNum(backlog.length)} tone="warning"
+          info="Open jobs (not completed) with no worksheet yet. This is the work still to be reported. Click to list them."
+          sub={`of ${openCases.length} open jobs${oldestBacklog?.ageDays != null ? ` · oldest ${oldestBacklog.ageDays}d` : ""}`}
           onClick={() => { setLoggedFilter((v) => (v === "backlog" ? "all" : "backlog")); scrollTo(recordsRef); }} active={loggedFilter === "backlog"} />
-        <KpiCard label="Done, No Worksheet" value={fmtNum(completedUnlogged.length)} tone="danger"
-          info="Completed cases that never got a worksheet. Click to list them."
-          sub={`${pct(completedUnlogged.length, cases.length - openCases.length)}% of completed cases`}
+        <KpiCard label="Completed, No Worksheet" value={fmtNum(completedUnlogged.length)} tone="danger"
+          info="Completed jobs that never got a worksheet. Click to list them."
+          sub={`${pct(completedUnlogged.length, cases.length - openCases.length)}% of completed jobs`}
           onClick={() => { setLoggedFilter("not_logged"); setFilterStage(uniq(completedUnlogged.map((c) => c.stage_id?.[1]))); scrollTo(recordsRef); }} />
-        <KpiCard label="Flagged Records" value={fmtNum(flagged.length)} tone="danger"
-          info="Cases whose paperwork doesn't match: a worksheet without a MoM, or a MoM / document without a worksheet. Click to jump to the flagged table."
+        <KpiCard label="Paperwork Issues" value={fmtNum(flagged.length)} tone="danger"
+          info="Jobs whose paperwork doesn't match: a worksheet without a MoM, or a MoM / document without a worksheet. Click to jump to the paperwork issues table."
           sub={`${flaggedNoMom} no MoM · ${flaggedNoWs} no worksheet`}
           onClick={() => scrollTo(flaggedRef)} />
         <KpiCard label="Engineers" value={fmtNum(people.length)}
-          info="Distinct people in the cases' Service Engineers field."
-          sub={`${fmtNum(totalAssignments)} assignments · ${fmtNum(people.length ? totalAssignments / people.length : 0, 1)} cases each`} />
+          info="Distinct people in the jobs' Service Engineers field."
+          sub={`${fmtNum(totalAssignments)} assignments · ${fmtNum(people.length ? totalAssignments / people.length : 0, 1)} jobs each`} />
       </KpiRow>
 
       <InsightsCard insights={insights} />
 
       <ChartRow columns="minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr)">
-        <Panel title="Monthly Trend · Cases Created" info="Cases per month (by Created On), split into logged (worksheet filed) and not logged. Click a month to filter the list; click again to clear.">
+        <Panel title="Monthly Trend · Jobs Created" info="Jobs per month (by Created On), split into with and without a worksheet. Click a month to filter the list; click again to clear.">
           <ColumnChart
             columns={months}
             height={200}
-            legend={[{ label: "Logged", color: LOGGED }, { label: "Not logged", color: UNLOGGED }]}
+            legend={[{ label: "With Worksheet", color: LOGGED }, { label: "Without Worksheet", color: UNLOGGED }]}
             activeKey={filterMonth}
             onColumnClick={(k) => { setFilterMonth((v) => (v === k ? null : k)); scrollTo(recordsRef); }}
           />
         </Panel>
-        <Panel title="Unlogged Backlog · Aging" info="Open cases with no worksheet, grouped by how long ago they were created. Older = more overdue reporting. Click a bar to list those cases.">
-          <BarList items={agingItems} formatValue={(v) => plural(v, "case")}
+        <Panel title="In-Progress Jobs Without Worksheet · Age" info="Open jobs with no worksheet, grouped by how long ago they were created. Older = more overdue reporting. Click a bar to list those jobs.">
+          <BarList items={agingItems} formatValue={(v) => plural(v, "job")}
             onItemClick={(k) => { setFilterAge((v) => (v === k ? null : k)); scrollTo(recordsRef); }} activeKey={filterAge} />
           {oldestBacklog && (
             <div style={{ marginTop: 14, padding: "8px 10px", borderRadius: 8, background: T.bgCardAlt, border: `1px solid ${T.border}`, fontSize: 11, color: T.textSecondary, lineHeight: 1.45 }}>
@@ -376,18 +376,18 @@ export function OverviewTab({ model, userMap }) {
         <Stack>
           <InteractiveDonut
             grow={false}
-            title="Worksheet Logging"
-            infoText="Logged = the case has at least one worksheet. Click a segment to filter the list below."
-            centerLabel="cases"
-            unit="cases"
+            title="Worksheet Status"
+            infoText="With Worksheet = the job has at least one worksheet. Click a segment to filter the list below."
+            centerLabel="jobs"
+            unit="jobs"
             segments={[
-              { key: "logged", displayKey: "Logged", value: logged, color: LOGGED },
-              { key: "not_logged", displayKey: "Not logged", value: cases.length - logged, color: UNLOGGED },
+              { key: "logged", displayKey: "With Worksheet", value: logged, color: LOGGED },
+              { key: "not_logged", displayKey: "Without Worksheet", value: cases.length - logged, color: UNLOGGED },
             ]}
             activeKey={loggedFilter === "logged" || loggedFilter === "not_logged" ? loggedFilter : null}
             onSegmentClick={(k) => { setLoggedFilter((v) => (v === k ? "all" : k)); scrollTo(recordsRef); }}
           />
-          <Panel title="Case Status" info="Cases per Odoo stage (the Stage column).">
+          <Panel title="Status" info="Jobs per Odoo stage (the Status column).">
             <SplitBar parts={statusItems} />
             <div style={{ height: 10 }} />
             <BarList items={statusItems} maxHeight={90} formatValue={(v) => `${v}`} />
@@ -411,12 +411,12 @@ export function OverviewTab({ model, userMap }) {
       />
 
       <ChartRow columns="minmax(0, 1fr) minmax(0, 1fr)" style={{ marginTop: 10 }}>
-        <Panel title="Logging Ranking · Worksheets on Odoo" info="Ranked by logging rate: the share of an engineer's assigned cases that have at least one worksheet in Odoo. Ties go to whoever filed more worksheets. The note shows how recently they last logged.">
+        <Panel title="Worksheet Ranking" info="Ranked by worksheet rate: the share of an engineer's assigned jobs that have at least one worksheet in Odoo. Ties go to whoever filed more worksheets. The note shows how recently they last logged.">
           <BarList items={rankingItems} showRank maxHeight={330} formatValue={(v) => `${Math.round(v * 100)}%`}
             onItemClick={(id) => { setFilterEngineer((v) => (v === id ? null : id)); scrollTo(recordsRef); }} activeKey={filterEngineer} />
         </Panel>
-        <Panel title="Cases by Region · Logging Rate" info="Cases per region. Bar colour shows the logging rate: green ≥ 50%, amber 25–49%, red < 25%. Click a region to filter the list.">
-          <BarList items={regionItems} maxHeight={330} formatValue={(v) => plural(v, "case")}
+        <Panel title="Jobs by Region · Worksheet Rate" info="Jobs per region. Bar colour shows the worksheet rate: green ≥ 50%, amber 25–49%, red < 25%. Click a region to filter the list.">
+          <BarList items={regionItems} maxHeight={330} formatValue={(v) => plural(v, "job")}
             onItemClick={(k) => { setFilterRegion((v) => (v.length === 1 && v[0] === k ? [] : [k])); scrollTo(recordsRef); }}
             activeKey={filterRegion.length === 1 ? filterRegion[0] : null} />
         </Panel>
@@ -433,16 +433,16 @@ export function OverviewTab({ model, userMap }) {
         </SectionLabel>
       </div>
       <DataTable
-        title="Flagged · Paperwork Mismatch"
+        title="Paperwork Issues"
         columns={flaggedColumns}
         rows={flagged}
         storageKey="adage_fsm_overview_flagged_cols_v1"
         searchText={(c) => [c.name, caseCustomer(c), c.flagReason, engineerNames(c.engineerIds, userMap).join(" ")].join(" ")}
-        searchPlaceholder="Search flagged..."
+        searchPlaceholder="Search paperwork issues..."
         onRowClick={openCase}
         exportName="field-service-flagged"
         rowStyle={(c) => ({ boxShadow: `inset 3px 0 0 ${FLAG_META[c.flag].color}` })}
-        emptyText="No flagged records. Every case's worksheet and MoM line up 🎉"
+        emptyText="No paperwork issues. Every job's worksheet and MoM line up 🎉"
         maxHeight={340}
       />
 
@@ -452,7 +452,7 @@ export function OverviewTab({ model, userMap }) {
       {anyFilter ? (
         <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
           <span style={{ fontSize: 11, color: T.textMuted }}>Filtered by:</span>
-          {loggedFilter !== "all" && <FilterChip label={{ logged: "Logged", not_logged: "Not logged", backlog: "Unlogged backlog (open)" }[loggedFilter]} color={loggedFilter === "logged" ? T.success : T.warning} onClear={() => setLoggedFilter("all")} />}
+          {loggedFilter !== "all" && <FilterChip label={{ logged: "With Worksheet", not_logged: "Without Worksheet", backlog: "In progress, no worksheet" }[loggedFilter]} color={loggedFilter === "logged" ? T.success : T.warning} onClear={() => setLoggedFilter("all")} />}
           {filterEngineer && <FilterChip label={`Engineer: ${userMap[filterEngineer] || filterEngineer}`} onClear={() => setFilterEngineer(null)} />}
           {filterMonth && <FilterChip label={`Created: ${monthLabel(filterMonth)}`} onClear={() => setFilterMonth(null)} />}
           {filterAge && <FilterChip label={`Backlog age: ${filterAge}`} color={T.warning} onClear={() => setFilterAge(null)} />}
@@ -465,21 +465,21 @@ export function OverviewTab({ model, userMap }) {
         </div>
       ) : null}
       <DataTable
-        title="Field Service Cases"
+        title="Field Service Jobs"
         columns={columns}
         rows={rows}
         storageKey="adage_fsm_overview_cols_v5"
         searchText={(c) => [c.name, caseCustomer(c), caseEndUser(c), c.x_studio_control_no, c.x_studio_scrn, c.x_studio_problem_type, engineerNames(c.engineerIds, userMap).join(" ")].join(" ")}
-        searchPlaceholder="Search cases..."
+        searchPlaceholder="Search jobs..."
         onRowClick={openCase}
         exportName="field-service-cases"
         toolbar={
           <>
             <div style={{ width: 1, height: 20, background: "#e5e7eb", flexShrink: 0 }} />
             <FilterSelect value={loggedFilter} onChange={setLoggedFilter} prefix="Worksheet: " width={190}
-              options={[{ value: "all", label: "All" }, { value: "logged", label: "Logged" }, { value: "not_logged", label: "Not logged" }, { value: "backlog", label: "Open, not logged" }]} />
+              options={[{ value: "all", label: "All" }, { value: "logged", label: "With Worksheet" }, { value: "not_logged", label: "Without Worksheet" }, { value: "backlog", label: "In Progress, No Worksheet" }]} />
             <MultiSelect label="Region" options={regionOptions} selected={filterRegion} onChange={setFilterRegion} searchable searchPlaceholder="Search region..." />
-            <MultiSelect label="Stage" options={stageOptions} selected={filterStage} onChange={setFilterStage} />
+            <MultiSelect label="Status" options={stageOptions} selected={filterStage} onChange={setFilterStage} />
             <MultiSelect label="Call Type" options={callTypeOptions} selected={filterCallType} onChange={setFilterCallType} />
           </>
         }

@@ -3,6 +3,53 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-09 — Manager View: KPI labels "Jobs In Progress" / "Jobs Completed"
+
+- Report tab top KPI row: **In Progress** → **Jobs In Progress**, **Completed** → **Jobs Completed**. Verified with
+  `npm run build`.
+
+## 2026-10-09 — Manager View: "Pending Worksheet Entries" title
+
+- Report tab: the **How long open jobs have been waiting** panel is renamed **Pending Worksheet Entries**. It still
+  shows open jobs with no worksheet, grouped by age. Verified with `npm run build`.
+
+## 2026-10-09 — Plain-English labels everywhere; dead donut code removed
+
+- Standardised the visible labels on every tab so non-technical users can read them (the full old → new table is in
+  `docs/metrics.md` under "Screen wording"):
+  - Case/Task → **Job**; Stage / Case Status / Task Status → **Status**; Open → **In Progress**; Service Engineer(s)
+    → **Engineer(s)**.
+  - Logged / Logging / Report Rate → **With / Without Worksheet**, **Worksheet Rate**; Unlogged Backlog →
+    **In-Progress Jobs Without Worksheet**; Last Logged (In) → **Last Worksheet**.
+  - Flagged → **Paperwork Issues**.
+  - MoM / Comm. / Cert. / Docs / Hrs / Avg / OT are spelled out.
+  - Hours and days wording is unified (Working Hours, Travel Days, Visit Length).
+  - Hint headings are plain English (Click for details, Summary, Segments, Age groups, Box …).
+- Only visible text changed. Data keys, filter values, Excel file names and saved column widths are untouched. Hints
+  still name the Odoo fields (e.g. Service Engineers) so users can find them in Odoo.
+- Kept on purpose: **Logged Worksheet** / **Unlogged Worksheet** in Engineer Ranking (names you chose earlier).
+- Removed the hidden Problem Types / Service Type donuts on the Report tab (`SHOW_TYPE_DONUTS` was always off), along
+  with their helpers: −27 lines.
+- Verified with `npm run build` and the dev server compiling every tab. The renames were done by a script that only
+  edits text strings and printed every change for review.
+
+## 2026-10-09 — Manager View: "Jobs Created" trend title
+
+- Report tab: **Monthly Trend · Cases Created** renamed **Monthly Trend · Jobs Created**, to match the tab's "jobs"
+  wording. The Overview tab's chart is unchanged. Verified with `npm run build`.
+
+## 2026-10-09 — Engineer Schedule: "Total visits per day" label
+
+- The Gantt's **Total** row is renamed **Total visits per day** (**Total visits per month** in the Year view, where
+  each column is a month). The ⓘ hint is renamed to match. Verified with `npm run build`.
+
+## 2026-10-09 — Engineer Schedule: monthly columns in the Year view
+
+- With **Year** picked, the Gantt now shows 12 month columns (January–December under a 2026-style year header) instead
+  of 365 day columns, like Odoo's Year scale. Each bar spans its start month to its end month. Visits for the same
+  customer in the same month stack into lanes, and the Total row counts visits active in each month. Day, Week, Month,
+  Quarter and custom From/To ranges still use day columns. Verified with `npm run build`.
+
 ## 2026-10-09 — Engineer Schedule: Odoo-style date navigation, moved to the top
 
 - Moved the Engineer Schedule panel from after Engineer Ranking & Workload to right after the KPI row — first
