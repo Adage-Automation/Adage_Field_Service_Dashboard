@@ -3,6 +3,13 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-09 — Treemap: second click on an engineer returns to all regions
+
+- In the Regions → engineers treemap, clicking the selected engineer again now closes their job list and goes back to the
+  regions level (before, it only closed the list). The detail strip and the "?" hint say so.
+- Verified in headless Chrome against live data: NORTH/DELHI → ADESH KUMAR opens the list; clicking ADESH KUMAR again
+  shows the region tiles and closes the list; no console errors.
+
 ## 2026-10-09 — "Service Report" renamed to "Worksheet" throughout the Report/Overview tabs
 
 - Every user-facing label, tooltip, empty-state and drill-down title that said "service report(s)" now says

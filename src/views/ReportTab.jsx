@@ -255,7 +255,12 @@ export function ReportTab({ model, userMap }) {
     ? tmCases.filter((c) => regionOf(c) === tmRegion && (tmEngineer === "none" ? !c.engineerIds.length : c.engineerIds.includes(Number(tmEngineer))))
     : [];
   const tmEngineerName = tmItems.find((t) => t.key === tmEngineer)?.label;
-  const tmSelect = (key) => (!tmRegion ? setTmRegion(key) : setTmEngineer(key === tmEngineer ? null : key));
+  // Region → its engineers; engineer → their jobs; the same engineer again → back to all regions.
+  const tmSelect = (key) => {
+    if (!tmRegion) return setTmRegion(key);
+    if (key === tmEngineer) { setTmEngineer(null); setTmRegion(null); return; }
+    setTmEngineer(key);
+  };
   const crumb = (label, onClick) => <button onClick={onClick} style={{ border: "none", background: "none", padding: 0, color: T.accent, fontWeight: 600, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>{label}</button>;
   const jobsTable = (title, rows, exportName, onClose, storageKey) => (
     <div style={{ marginBottom: 10 }}>
@@ -377,7 +382,7 @@ export function ReportTab({ model, userMap }) {
       {/* ── Treemap: regions → engineers → jobs ── */}
       <SectionLabel>Regions &amp; Engineers · Who Is Completing the Work</SectionLabel>
       <Panel grow={false} style={{ marginBottom: 10 }} title="Regions → engineers · completed vs assigned"
-        info="Tile size = number of jobs; colour = share completed, red (0%) to green (100%). Click a region to see its engineers, then click an engineer to list their jobs in that region. A job with two engineers counts for each.">
+        info="Tile size = number of jobs; colour = share completed, red (0%) to green (100%). Click a region to see its engineers, then click an engineer to list their jobs in that region; click the same engineer again to go back to all regions. A job with two engineers counts for each.">
         <div className="no-print" style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: T.textMuted, marginBottom: 10, padding: "6px 10px", borderRadius: 8, background: T.bgInput }}>
           {crumb("All regions", () => { setTmRegion(null); setTmEngineer(null); })}
           {tmRegion && <>›{crumb(tmRegion, () => setTmEngineer(null))}</>}
@@ -404,7 +409,7 @@ export function ReportTab({ model, userMap }) {
                 </div>
               </div>
               <span style={{ flex: 1, minWidth: 240, padding: "6px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard }}>
-                {shown ? <><strong style={{ color: T.textPrimary }}>{shown.label}</strong>: {shown.completed} of {shown.value} completed ({shown.rate}%) · {shown.hint}</>
+                {shown ? <><strong style={{ color: T.textPrimary }}>{shown.label}</strong>: {shown.completed} of {shown.value} completed ({shown.rate}%) · {shown.hint}{!tmPeek && tmEngineer ? " · Click this engineer again to go back to all regions." : ""}</>
                   : <><strong style={{ color: T.textPrimary }}>{point.label}</strong>: {point.completed} of {point.value} cases completed ({point.rate}%). Hover or tab to a {tmRegion ? "engineer" : "region"} to move the pointer; click or press Enter to {tmRegion ? "list their jobs" : "see its engineers"}.</>}
               </span>
             </div>
