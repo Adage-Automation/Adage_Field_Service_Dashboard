@@ -25,23 +25,39 @@ export function CardTitle({ children, color = T.textMuted, right = null, info = 
 }
 
 // ─── "?" info tooltip (same as InteractiveDonut's info button) ─────────────────
+// `text` is a string or [{ label, formula?, text }]. The popover is position: fixed (placed from the button's
+// screen position) so table headers and scrolling cards can't clip it; it opens upward near the bottom edge.
+const POP_W = 280;
 export function InfoDot({ text }) {
-  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState(null); // null = closed
+  const show = pos !== null;
   const ref = useRef(null);
+  const open = () => {
+    const b = ref.current?.getBoundingClientRect();
+    if (!b) return;
+    const left = Math.max(8, Math.min(b.left, window.innerWidth - POP_W - 8));
+    const below = window.innerHeight - b.bottom;
+    setPos(below < 280 && b.top > below ? { left, bottom: window.innerHeight - b.top + 10 } : { left, top: b.bottom + 10 });
+  };
+  const close = () => setPos(null);
   useEffect(() => {
     if (!show) return undefined;
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setShow(false); };
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) close(); };
     document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    window.addEventListener("scroll", close, true); // fixed popover would drift away from the button
+    return () => { document.removeEventListener("mousedown", h); window.removeEventListener("scroll", close, true); };
   }, [show]);
   return (
-    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
         aria-label="More info"
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-        onClick={() => setShow((v) => !v)}
+        aria-expanded={show}
+        onMouseEnter={open}
+        onMouseLeave={close}
+        onFocus={open}
+        onBlur={close}
+        onClick={() => (show ? close() : open())}
         style={{
           display: "flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, padding: 0,
           borderRadius: "50%", border: `1px solid ${show ? T.accent : T.textMuted}`, background: "none",
@@ -52,9 +68,9 @@ export function InfoDot({ text }) {
       </button>
       {show && (
         <div role="tooltip" style={{
-          position: "absolute", top: "calc(100% + 10px)", left: 0, width: 280, maxWidth: "min(280px, calc(100vw - 40px))",
+          position: "fixed", ...pos, width: POP_W, maxWidth: "calc(100vw - 16px)", maxHeight: "70vh", overflowY: "auto",
           background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: "0 14px 32px rgba(15, 23, 42, 0.18)",
-          zIndex: 30, overflow: "hidden", fontWeight: 400, textTransform: "none", letterSpacing: "normal",
+          zIndex: 1000, fontWeight: 400, textTransform: "none", letterSpacing: "normal", textAlign: "left", whiteSpace: "normal", cursor: "default",
         }}>
           <div style={{ height: 3, background: `linear-gradient(90deg, ${T.accent}, ${T.accentBdr})` }} />
           <div style={{ padding: "11px 13px", display: "flex", flexDirection: "column", gap: Array.isArray(text) ? 9 : 0 }}>
@@ -896,7 +912,7 @@ export function DataTable({
               >
                 <span>{c.label}{c.sortValue && (sort?.key === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : " ⇅")}</span>
                 {c.info && (
-                  <span className="col-info" title={c.info} onClick={(e) => e.stopPropagation()}>?</span>
+                  <span style={{ marginLeft: 4, display: "inline-flex" }}><InfoDot text={c.info} /></span>
                 )}
                 {idx < shown.length - 1 && (
                   <div className="col-resize-handle" onMouseDown={(e) => startColumnResize(e, idx)} onClick={(e) => e.stopPropagation()} title="Drag to resize this column" />

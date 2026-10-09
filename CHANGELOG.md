@@ -3,6 +3,37 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-09 — Report tab: pie charts hidden, footer note removed
+
+- Problem Types and Service Type pie charts are hidden for now behind `SHOW_TYPE_DONUTS = false` (set it to `true` to
+  bring them back with their section heading). Next Steps now follows Problems & Resolutions directly.
+- Removed the footer note ("Odoo has no due dates… Detail lives in the Overview, Worksheets, Documents and Timesheets tabs.").
+  The 60-day "late" rule is still explained in the Next Steps "?".
+- Verified in headless Chrome: pie charts and footer gone, Next Steps renders; no console errors.
+
+## 2026-10-09 — Column "?" hints use the formula popover
+
+- Every table column "?" now opens the same popover as the cards (labelled sections, formula box) instead of a plain browser
+  tooltip. All 20 Report-tab column hints rewritten as `{ label, formula, text }` (e.g. Report Rate = Logged ÷ Assigned × 100,
+  Avg Days = mean(Visit End − Visit Start + 1), Flagged = Worksheet AND no MoM · or · MoM / document AND no worksheet).
+- `InfoDot` (ui.jsx): popover is now `position: fixed` from the button's screen position, so table headers / scrolling
+  containers can't clip it; it opens upward near the bottom of the window (fixes the Next Steps "?" running off-screen),
+  closes on scroll, also opens on keyboard focus, and stops clicks reaching the column's sort. `DataTable` headers use it;
+  string `info` still works for the other tabs.
+- `App.jsx`: the page fade-in no longer holds its last frame (`forwards`), which left a transform on the page wrapper and
+  trapped fixed popovers. The fade looks the same.
+- Verified in headless Chrome: all 20 column "?" and all card "?" open fully on screen next to their icon; no console errors.
+
+## 2026-10-09 — Report tab: formula "?" on every card and table
+
+- Every card and table on the Report tab now has a structured "?" like Engineer Ranking & Workload (labelled sections,
+  formula in a highlighted box): treemap, Monthly Trend, How long open jobs have been waiting, Visit Analysis by Engineer,
+  Problems & Resolutions, Problem Types and Service Type donuts, Next Steps (the four action rules), the never-reported
+  engineers list, and every job drill-down list (`JOBS_INFO`). Engineer Ranking's "?" gains Backlog and Last Worksheet.
+- Column-header hints rewritten to lead with the formula (e.g. "Days Open = Today − Created On", "Report Rate =
+  Worksheets logged ÷ Assigned × 100"); the Worksheet column in job lists gains a hint. New `TableHint` helper.
+- Verified in headless Chrome against live data: all 9 "?" popovers open with content; no console errors.
+
 ## 2026-10-09 — Treemap: second click on an engineer returns to all regions
 
 - In the Regions → engineers treemap, clicking the selected engineer again now closes their job list and goes back to the

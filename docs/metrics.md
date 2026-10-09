@@ -36,6 +36,11 @@ Plain-English, one-screen view for the CSD manager. Cancelled jobs are excluded.
 Completed/Done. Odoo has **no due dates** on this instance (`date_deadline`, `date_end`, `planned_date_begin` are empty),
 so lateness uses job age and days since the last stage change (`date_last_stage_update`). Colour = status only.
 
+Every card and table has a "?" that opens labelled sections with the formula in a highlighted box (`InfoDot` with
+`{ label, formula, text }[]`): treemap, Engineer Ranking & Workload, Monthly Trend, How long open jobs have been waiting,
+Visit Analysis by Engineer, Problems & Resolutions, both donuts, Next Steps, and every job / engineer drill-down list.
+Column-header "?" hints use the same popover (a column's `info` can be a string or that array). Keep this file and those hints in sync.
+
 | Item | Definition | Green / Amber / Red |
 |---|---|---|
 $1
@@ -47,7 +52,7 @@ $1
 | Visit Analysis by Engineer | per engineer: visits, avg visit days, avg hours, Problems Identified (number of visits with ≥ 1 tag, shown as "N of visits"), Spare Parts Used (the distinct spare parts on the engineer's worksheets, listed by name), main Service Type. Default sort: avg days descending. Shown above Problems & Resolutions; clicking an engineer lists the jobs assigned to them (rows open the case in Odoo) | red → green by share of visits on the two count columns |
 | &nbsp;&nbsp;Avg Days | `engineerVisitStats` in derive.js (engineer = the worksheet's Assigned Service Engineer, else the job's Service Engineers). For each of the engineer's visits, Actual Visit End Date − Actual Visit Start Date + 1 (both days count, so same-day = 1 day); averaged across visits that have both dates. A visit missing either date counts toward Visits but is skipped here | |
 | &nbsp;&nbsp;Avg Hours | `engineerHoursStats` in derive.js (engineer = the timesheet's Submitted By, else the job's Service Engineers) — a different source than Avg Days: sum of Total Working Hours across the engineer's timesheets ÷ number of timesheet entries. Blank when the engineer has no timesheets | |
-| Problem Types + Service Type (donuts) | jobs per case Problem Type ("Not set" when empty; top 4 + Other) ; Service Type = worksheets per Service Type (top 4 + Other), side by side | |
+| Problem Types + Service Type (donuts) | **Hidden for now** (`SHOW_TYPE_DONUTS = false` in ReportTab.jsx). Jobs per case Problem Type ("Not set" when empty; top 4 + Other) ; Service Type = worksheets per Service Type (top 4 + Other), side by side | |
 | Next Steps | up to 3 plain-English actions (the engineers-with-no-reports action points to the ranking table instead of listing names), most urgent first, each with a number. Each action has a **Take Action →** button that opens the jobs behind it inline (late: open > 60 days; stuck: no stage change 30+ days; never-reported engineers: a table of those engineers (same columns as the ranking table), click one to list their assigned jobs; recurring: the jobs of the top customer + problem pair), with sort, search and Excel export, same as the other drill-downs | |
 
 Removed from the report (still available in the other tabs): hours, overtime, special dates, spare parts, service

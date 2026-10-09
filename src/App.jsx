@@ -198,8 +198,8 @@ export default function App() {
         .card:hover { border-color: ${T.borderMd}; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         .pill { border-radius: 100px; font-size: 11px; font-weight: 600; padding: 3px 10px; display: inline-block; }
         .bar-fill { transition: width 0.8s cubic-bezier(.4,0,.2,1); }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        .fade-in { animation: fadeIn 0.35s ease forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        .fade-in { animation: fadeIn 0.35s ease; } /* no "forwards": a held transform would trap position:fixed popovers */
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 0.9s linear infinite; }
