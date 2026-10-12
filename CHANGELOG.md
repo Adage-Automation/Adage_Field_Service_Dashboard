@@ -3,6 +3,21 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-12 — Fix Assigned Engineers over-count vs. Total/Unassigned
+
+- Report tab KPIs renamed: **Total Engineers** → **Total Engineer Count**, **Assigned Engineers** → **Assigned
+  Engineer Count**.
+- Fixed a bug where Total Engineer Count ≠ Assigned Engineer Count + Unassigned Engineers (e.g. 48 assigned + 58
+  unassigned didn't add up to the total shown). Cause: "Assigned" was `r.engineers.length`, built from every live
+  case's `x_studio_service_engineers`, which can include employees **outside** the Service Manager's roster
+  (`serviceEngineers`, `parent_id = 184`) — while "Unassigned" is `serviceEngineers` minus assigned roster IDs.
+  An engineer assigned to a job but not on the roster inflated "Assigned" without reducing "Unassigned", breaking
+  the sum. Added `assignedRosterCount = serviceEngineers.length - unassignedEngineers.length` (roster members
+  with ≥1 job) and used it everywhere the KPI is compared against the roster total (the KPI card, the
+  all-engineers hover meter, and its summary line), so Total = Assigned + Unassigned always holds. `r.engineers`
+  itself is still correctly deduped by employee id (keyed object in `engineerStats()`), so no engineer was ever
+  double-counted — the mismatch was roster-membership, not duplication.
+
 ## 2026-10-12 — Customer Insights: date filter (All Time / Month / Week / Custom range)
 
 - Report tab's Customer Insights section (both the bar chart and the Grid table, which now read the same

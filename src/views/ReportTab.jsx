@@ -577,6 +577,10 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
   // Roster employees (reporting to the Service Manager) with zero live, non-cancelled jobs — never appear in r.engineers.
   const assignedEngineerIds = new Set(r.engineers.map((e) => e.id));
   const unassignedEngineers = serviceEngineers.filter((e) => !assignedEngineerIds.has(e.id)).sort((a, b) => a.name.localeCompare(b.name));
+  // Roster members with >=1 job. r.engineers can also include engineers outside the roster
+  // (assigned to a job but not reporting to the Service Manager), so this is NOT r.engineers.length —
+  // using that would break Total Engineers = Assigned + Unassigned.
+  const assignedRosterCount = serviceEngineers.length - unassignedEngineers.length;
   const crumb = (label, onClick) => <button onClick={onClick} style={{ border: "none", background: "none", padding: 0, color: T.accent, fontWeight: 600, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}>{label}</button>;
   const viewTab = (label, active, onClick) => (
     <button type="button" onClick={onClick} aria-pressed={active}
@@ -813,8 +817,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         <KpiCard label="Total Jobs" value={fmtNum(r.live.length)} tone="accent" info="Live jobs (is_fsm), cancelled excluded." />
         <KpiCard label="Jobs In Progress" value={fmtNum(r.open.length)} info="Open jobs: not in a Completed / Done stage." />
         <KpiCard label="Jobs Completed" value={fmtNum(r.live.length - r.open.length)} tone="success" info="Live jobs whose stage is Completed / Done." />
-        <KpiCard label="Total Engineers" value={fmtNum(serviceEngineerCount)} tone="warning" info="hr.employee records reporting to Samaresh Dey (the Service Manager)." />
-        <KpiCard label="Assigned Engineers" value={fmtNum(r.engineers.length)} info="Of those, engineers with at least one job assigned to them." />
+        <KpiCard label="Total Engineer Count" value={fmtNum(serviceEngineerCount)} tone="warning" info="hr.employee records reporting to Samaresh Dey (the Service Manager)." />
+        <KpiCard label="Assigned Engineer Count" value={fmtNum(assignedRosterCount)} info="Of those, roster engineers with at least one job assigned to them." />
       </KpiRow>
 
       {/* ── Engineer schedule (Gantt) ── */}
@@ -909,7 +913,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
           // two engineers is counted once per engineer tile, so summing tiles double-counts it (inflates cases/rate).
           const point = shown ? shown
             : tmKey ? tmItems.find((t) => t.key === tmKey)
-            : tmGroupBy === "engineer" ? { label: `All ${tmGroupPlural}`, rate: pct(r.engineers.length, serviceEngineerCount) }
+            : tmGroupBy === "engineer" ? { label: `All ${tmGroupPlural}`, rate: pct(assignedRosterCount, serviceEngineerCount) }
             : { label: `All ${tmGroupPlural}`, rate: pct(levelDone, levelJobs), completed: levelDone, value: levelJobs };
           const meterCaption = !shown && !tmKey && tmGroupBy === "engineer" ? "assigned" : "completed";
           return (
@@ -930,7 +934,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
               <span style={{ flex: 1, minWidth: 240, padding: "6px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard }}>
                 {shown ? <><strong style={{ color: T.textPrimary }}>{shown.label}</strong>: {shown.completed} of {shown.value} completed ({shown.rate}%) · {shown.hint}{tmKey && tmDrillKey && !tmDrillPeek ? " · Click this tile again to clear the selection." : ""}</>
                   : tmKey ? <><strong style={{ color: T.textPrimary }}>{tmSelectedLabel}</strong>: {point.completed} of {point.value} completed ({point.rate}%) · {point.hint} · Hover or tab to a {drillLabel.toLowerCase()} tile to see their jobs, or click one to list them below.</>
-                  : tmGroupBy === "engineer" ? <><strong style={{ color: T.textPrimary }}>All {tmGroupPlural}</strong>: {r.engineers.length} of {serviceEngineerCount} service engineers are assigned. Hover or tab to a tile to move the pointer; click or press Enter to see who they serve.</>
+                  : tmGroupBy === "engineer" ? <><strong style={{ color: T.textPrimary }}>All {tmGroupPlural}</strong>: {assignedRosterCount} of {serviceEngineerCount} service engineers are assigned. Hover or tab to a tile to move the pointer; click or press Enter to see who they serve.</>
                   : <><strong style={{ color: T.textPrimary }}>All {tmGroupPlural}</strong>: {plural(tmItems.length, tmGroupBy === "customer" ? "customer" : "region")} shown. Hover or tab to a tile to move the pointer; click or press Enter to see who's assigned.</>}
               </span>
             </div>
