@@ -314,6 +314,21 @@ export function Avatar({ name, color, size = 30 }) {
   );
 }
 
+// Fixed-size CSS triangle so the sort indicator is pixel-identical in every table,
+// instead of the ▲▼⇅ text glyphs (which render via whatever fallback font the OS/browser
+// picks for that character, so the same table could look different machine to machine).
+function SortIndicator({ dir }) { // dir: "asc" | "desc" | null (sortable, not the active sort)
+  const base = { width: 0, height: 0, borderLeft: "3px solid transparent", borderRight: "3px solid transparent" };
+  if (dir === "asc") return <span style={{ ...base, borderBottom: "4px solid currentColor", display: "inline-block", marginLeft: 5 }} />;
+  if (dir === "desc") return <span style={{ ...base, borderTop: "4px solid currentColor", display: "inline-block", marginLeft: 5 }} />;
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, marginLeft: 5, opacity: 0.55 }}>
+      <span style={{ ...base, borderBottom: "3px solid currentColor" }} />
+      <span style={{ ...base, borderTop: "3px solid currentColor" }} />
+    </span>
+  );
+}
+
 // ─── Horizontal bar list (ranking / distribution) ──────────────────────────────
 // items: [{ key, label, value, max?, sub?, color?, avatar?, rank? }]
 export function BarList({ items, formatValue = (v) => fmtNum(v), emptyText = "No data", showRank = false, maxHeight = null, onItemClick = null, activeKey = null }) {
@@ -912,7 +927,10 @@ export function DataTable({
                 onClick={c.sortValue ? () => toggleSort(c.key) : undefined}
                 style={c.sortValue ? { cursor: "pointer", userSelect: "none" } : undefined}
               >
-                <span>{c.label}{c.sortValue && (sort?.key === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : " ⇅")}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", ...(sort?.key === c.key ? { fontWeight: 800, color: T.textPrimary } : null) }}>
+                  {c.label}
+                  {c.sortValue && <SortIndicator dir={sort?.key === c.key ? sort.dir : null} />}
+                </span>
                 {c.info && (
                   <span style={{ marginLeft: 4, display: "inline-flex" }}><InfoDot text={c.info} /></span>
                 )}

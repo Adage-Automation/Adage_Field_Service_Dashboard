@@ -3,6 +3,68 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-12 — Plain-English "?" tooltips for Total/Assigned Engineer Count
+
+- Reworded the "?" tooltips on the "Total Engineer Count" and "Assigned Engineer Count" KPI cards in
+  `src/views/ReportTab.jsx`. Dropped the Odoo model/manager-name jargon ("hr.employee records reporting to
+  Samaresh Dey") for plain sentences. Same numbers, wording only.
+
+## 2026-10-12 — Plain-English "?" tooltips for Customer Insights (Report tab)
+
+- Reworded the "?" tooltip on both Customer Insights views in `src/views/ReportTab.jsx`: the bar-chart Panel
+  (Bars/Date/Jobs/Visits/Visit Days/Working Hours/Click for details) and the Grid table's toolbar hint
+  (Customer/Sort). Dropped formulas (Σ, "Visit End − Visit Start + 1"), Odoo field names ("the job's Customer
+  field", "Created On") and jargon in favor of plain sentences a non-technical reader can follow. Same
+  calculations, wording only.
+
+## 2026-10-12 — Write the "?" tooltip for every Key Insights card
+
+- Overview, Worksheets and Timesheets tabs' `InsightsCard` had no `info` prop, so their "?" tooltip fell back to
+  `InsightsCard`'s generic default. Added a tailored `info` to each, matching the pattern already on
+  Documents' card: lists what each possible insight covers and that they're generated from the records shown
+  (follows the engineer filter), most relevant first, up to 6. No logic change.
+
+## 2026-10-12 — Auto-scroll to the job list after a treemap drill-down
+
+- Engineer's Dashboard treemap: once drilling in reveals a job list (`tmDrillKey` set — clicking "View all N
+  jobs" or a breakdown tile), the page now smooth-scrolls down to that list instead of leaving the user to find
+  it below the fold. Added a `tmDrillJobsRef` + `useEffect` on `tmDrillKey` in `src/views/ReportTab.jsx`
+  (`scrollIntoView({ behavior: "smooth", block: "start" })`). Clicking the top-level tile alone (just swapping
+  to the customer/engineer breakdown inside the same box) doesn't scroll — nothing new appears below yet.
+
+## 2026-10-12 — Rename "Pending Worksheet Entries" panel for non-technical readers
+
+- Report tab panel title changed from "Pending Worksheet Entries" to **"Jobs Without a Worksheet, by Days
+  Waiting"** (`src/views/ReportTab.jsx`), naming both chart axes in plain English instead of internal jargon.
+  No logic change — same data, same age buckets, same click-to-filter.
+
+## 2026-10-12 — Hide Report tab from header; standardize the sort-arrow glyph
+
+- Header tab bar (`App.jsx`) now renders no tabs at all (`tabs = []`) per request to hide Report for now; the
+  Report view still renders by default since `activeTab` still initializes to `"report"` and there's nothing
+  else in `tabs` to switch to. Easy to bring back later — add `{ id: "report", label: "Report" }` to `tabs`.
+- `DataTable`'s sort indicator used text glyphs (▲ ▼ ⇅), which render via whatever fallback font the OS/browser
+  picks for that character — same table, different machines, slightly different-looking arrow. Replaced with a
+  `SortIndicator` CSS triangle (fixed border-trick shape, no font involved) in `src/components/ui.jsx`, so the
+  arrow is pixel-identical everywhere. Since every table in the app already goes through this one shared
+  `DataTable`, this one change standardizes it app-wide.
+
+## 2026-10-12 — Bold the active sort column header in every table
+
+- `DataTable`'s header cell (`src/components/ui.jsx`) now bolds and darkens the label of whichever column the
+  table is currently sorted by (`fontWeight: 800`, `T.textPrimary` instead of the muted gray), on top of the
+  existing ▲/▼ arrow. Shared component, so it applies to every sortable table app-wide, including Visit
+  Analysis by Engineer (its default sort is Total Days). Verified with `npm run build`.
+
+## 2026-10-12 — Pending Worksheet Entries: vertical bars with labeled axes
+
+- Report tab's "Pending Worksheet Entries" chart was a horizontal `BarList` (shared across the app) with no
+  axis labels, which made the age bands hard to read at a glance. Added a new `AgeBars` component (local to
+  `ReportTab.jsx`, not touching the shared `BarList` used elsewhere) that renders the 4 age buckets as vertical
+  bars with a Y axis (tick counts at 0/25/50/75/100% of the max, "Jobs waiting" label) and an X axis ("Days
+  since Created On", one tick per band: 0–30 / 31–60 / 61–90 / 90+ days). Clicking a bar still filters the jobs
+  list below, same as before. Verified with `npm run build`.
+
 ## 2026-10-12 — Fix Assigned Engineers over-count vs. Total/Unassigned
 
 - Report tab KPIs renamed: **Total Engineers** → **Total Engineer Count**, **Assigned Engineers** → **Assigned

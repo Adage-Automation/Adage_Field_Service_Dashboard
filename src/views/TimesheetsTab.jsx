@@ -214,7 +214,8 @@ export function TimesheetsTab({ model, userMap, filtered }) {
         </div>
       )}
 
-      <InsightsCard insights={insights} />
+      <InsightsCard insights={insights}
+        info="Up to 6 of the following, generated from the timesheets shown (follows the engineer filter): overtime hours as a % of total hours worked; the engineer carrying the largest share of hours; average travel days per trip; non-working days (Casual Leave / Site Holiday) recorded on site; timesheets not linked to any job. Click an insight to apply its filter below." />
 
       <ChartRow columns="minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr)">
         <Panel title="Working Hours by Engineer" info="Working hours from each engineer's timesheets. A timesheet belongs to its Submitted By person, or to the job's service engineers when that field is empty.">

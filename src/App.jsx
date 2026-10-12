@@ -184,10 +184,8 @@ export default function App() {
   const model = useMemo(() => (fullModel ? filterModel(fullModel, engineerId) : null), [fullModel, engineerId]);
   const engineerName = engineerId ? userMap[engineerId] || `Employee #${engineerId}` : null;
 
-  // Only Report is shown in the tab bar for now; the rest stay reachable in code (filtered out here, not removed).
-  const tabs = [
-    { id: "report",     label: "Report" },
-  ];
+  // No tabs shown in the header for now; Report still renders by default (filtered out here, not removed).
+  const tabs = [];
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (

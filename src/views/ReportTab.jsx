@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { T } from "../constants/theme";
 import { SERVICE_TYPE_COLORS, CHART_COLORS, colorFor } from "../constants/colors";
 import { engineerStats, customerStats, engineerVisitStats, engineerHoursStats, wsEngineerIds, dayNum, AGE_BUCKETS, ageBucketOf } from "../lib/derive";
@@ -311,6 +311,54 @@ function MonthlyBars({ months, activeKey, onPick, height = 190 }) {
   );
 }
 
+// ─── Vertical bar chart with labeled axes (age-bucket distribution) ───────────
+// items: [{ key, label, color, value }]. Y axis = count, ticked 0/25/50/75/100% of max; X axis = item label.
+function AgeBars({ items, yLabel = "Jobs", xLabel = "", activeKey, onPick, height = 190 }) {
+  const [hover, setHover] = useState(null);
+  const max = Math.max(1, ...items.map((i) => i.value));
+  const ticks = [1, 0.75, 0.5, 0.25, 0].map((f) => Math.round(max * f));
+  const focusKey = hover || activeKey;
+  return (
+    <div>
+      {yLabel && <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 6 }}>{yLabel}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height, width: 26, textAlign: "right", flexShrink: 0 }}>
+          {ticks.map((t, i) => <span key={i} style={{ fontSize: 10.5, color: T.textMuted, lineHeight: 1 }}>{t}</span>)}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height, borderLeft: `1px solid ${T.border}`, borderBottom: `1px solid ${T.border}`, paddingLeft: 6, position: "relative" }}>
+            {ticks.slice(0, -1).map((t, i) => (
+              <div key={i} style={{ position: "absolute", left: 0, right: 0, top: `${i * 25}%`, borderTop: `1px dashed ${T.border}`, opacity: 0.5 }} />
+            ))}
+            {items.map((it) => {
+              const dim = focusKey && focusKey !== it.key;
+              const pct = (it.value / max) * 100;
+              return (
+                <button key={it.key} type="button" onClick={onPick ? () => onPick(it.key) : undefined}
+                  onMouseEnter={() => setHover(it.key)} onMouseLeave={() => setHover(null)}
+                  onFocus={() => setHover(it.key)} onBlur={() => setHover(null)} aria-pressed={activeKey === it.key}
+                  aria-label={`${it.label}: ${it.value} jobs`}
+                  style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end",
+                    alignItems: "center", border: "none", background: "transparent", cursor: onPick ? "pointer" : "default",
+                    opacity: dim ? 0.45 : 1, transition: "opacity 0.15s", fontFamily: "inherit", padding: 0, position: "relative", zIndex: 1 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: it.color, marginBottom: 3 }}>{it.value}</span>
+                  <div style={{ width: "70%", maxWidth: 54, height: `${pct}%`, minHeight: it.value ? 3 : 0, background: it.color, borderRadius: "4px 4px 0 0", transition: "height 0.4s ease" }} />
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 6, paddingLeft: 6 }}>
+            {items.map((it) => (
+              <div key={it.key} style={{ flex: 1, minWidth: 0, textAlign: "center", fontSize: 11, fontWeight: activeKey === it.key ? 700 : 500, color: activeKey === it.key ? it.color : T.textMuted }}>{it.label}</div>
+            ))}
+          </div>
+          {xLabel && <div style={{ textAlign: "center", fontSize: 11, color: T.textMuted, marginTop: 4 }}>{xLabel}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Engineer schedule (Gantt): one lane per overlapping visit ────────────────
 // Greedy interval packing: each bar takes the first lane whose last visit ends before this one starts.
 function packLanes(bars) {
@@ -440,6 +488,10 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
   const [tmPeek, setTmPeek] = useState(null);       // tile under the mouse / keyboard focus (detail strip)
   const [tmDrillKey, setTmDrillKey] = useState(null); // clicked tile in the nested breakdown treemap (customer, if grouped by engineer; else engineer); "__ALL__" = all jobs, no breakdown filter
   const [tmDrillPeek, setTmDrillPeek] = useState(null); // breakdown tile under the mouse / keyboard focus
+  const tmDrillJobsRef = useRef(null); // the jobs list that appears once tmDrillKey is set — scrolled into view below
+  useEffect(() => {
+    if (tmDrillKey) tmDrillJobsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [tmDrillKey]);
   const [fYear, setFYear] = useState([]);           // treemap filters (Created On year / month, customer, problem type)
   const [fMonth, setFMonth] = useState([]);
   const [fCustomer, setFCustomer] = useState([]);
@@ -449,7 +501,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
   const [pCustomer, setPCustomer] = useState([]);
   const [pProblem, setPProblem] = useState([]);
   const [pEngineer, setPEngineer] = useState([]);   // Problems & Resolutions: engineer names
-  const [waitBucket, setWaitBucket] = useState(null);  // clicked age band in "Pending Worksheet Entries"
+  const [waitBucket, setWaitBucket] = useState(null);  // clicked age band in "Jobs Without a Worksheet, by Days Waiting"
   const [trendMonth, setTrendMonth] = useState(null);   // clicked month in the monthly trend ("YYYY-MM")
   const [rankEngineer, setRankEngineer] = useState(null); // clicked row in Engineer Ranking & Workload (employee id)
   const [visitEngineer, setVisitEngineer] = useState(null); // clicked row in Visit Analysis by Engineer (employee id)
@@ -817,8 +869,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         <KpiCard label="Total Jobs" value={fmtNum(r.live.length)} tone="accent" info="Live jobs (is_fsm), cancelled excluded." />
         <KpiCard label="Jobs In Progress" value={fmtNum(r.open.length)} info="Open jobs: not in a Completed / Done stage." />
         <KpiCard label="Jobs Completed" value={fmtNum(r.live.length - r.open.length)} tone="success" info="Live jobs whose stage is Completed / Done." />
-        <KpiCard label="Total Engineer Count" value={fmtNum(serviceEngineerCount)} tone="warning" info="hr.employee records reporting to Samaresh Dey (the Service Manager)." />
-        <KpiCard label="Assigned Engineer Count" value={fmtNum(assignedRosterCount)} info="Of those, roster engineers with at least one job assigned to them." />
+        <KpiCard label="Total Engineer Count" value={fmtNum(serviceEngineerCount)} tone="warning" info="All engineers on the roster who report to the Service Manager." />
+        <KpiCard label="Assigned Engineer Count" value={fmtNum(assignedRosterCount)} info="Of those, how many currently have at least one job assigned to them." />
       </KpiRow>
 
       {/* ── Engineer schedule (Gantt) ── */}
@@ -947,10 +999,12 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
           ? (drillItems.length ? <Treemap items={drillItems} selectedKey={tmDrillKey} onSelect={(k) => { setTmDrillPeek(null); setTmDrillKey((v) => (v === k ? null : k)); }} onPeek={setTmDrillPeek} /> : empty(`No jobs for ${tmSelectedLabel}`))
           : (tmItems.length ? <Treemap items={tmItems} selectedKey={null} onSelect={(k) => { setTmPeek(null); tmSelect(k); }} onPeek={setTmPeek} /> : empty("No jobs match these filters"))}
       </Panel>
-      {tmDrillKey && jobsTable(
-        `${tmSelectedLabel} · ${tmDrillKey === "__ALL__" ? "all jobs" : drillKeyLabel(tmDrillKey)} · ${plural(tmDrillJobs.length, "job")} (${tmDrillJobs.filter(isCompleted).length} completed)`,
-        tmDrillJobs, `field-service-jobs-${tmGroupBy}-${tmSelectedLabel}-${tmDrillKey}`, () => setTmDrillKey(null), "adage_fsm_report_engineer_jobs_cols_v2",
-      )}
+      <div ref={tmDrillJobsRef}>
+        {tmDrillKey && jobsTable(
+          `${tmSelectedLabel} · ${tmDrillKey === "__ALL__" ? "all jobs" : drillKeyLabel(tmDrillKey)} · ${plural(tmDrillJobs.length, "job")} (${tmDrillJobs.filter(isCompleted).length} completed)`,
+          tmDrillJobs, `field-service-jobs-${tmGroupBy}-${tmSelectedLabel}-${tmDrillKey}`, () => setTmDrillKey(null), "adage_fsm_report_engineer_jobs_cols_v2",
+        )}
+      </div>
 
       {/* ── Engineer ranking & workload ── */}
       <div style={{ marginBottom: 10, marginTop: 18 }}>
@@ -991,13 +1045,13 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         ]}>
           <MonthlyBars months={r.months} activeKey={trendMonth} onPick={(k) => setTrendMonth((v) => (v === k ? null : k))} />
         </Panel>
-        <Panel title="Pending Worksheet Entries" info={[
+        <Panel title="Jobs Without a Worksheet, by Days Waiting" info={[
           { label: "Who's counted", formula: "Open jobs with no worksheet yet", text: "Open = not in a Completed / Done / Cancelled stage." },
           { label: "Age groups", formula: "Days waiting = Today − Created On", text: "Grouped 0–30, 31–60, 61–90 and 90+ days. Click a band to list its jobs." },
           { label: "Waiting longest", text: "The open job without a worksheet that was created earliest. Click its name to open it in Odoo." },
         ]}>
-          <BarList items={r.waiting} formatValue={(v) => plural(v, "job")}
-            onItemClick={(k) => setWaitBucket((v) => (v === k ? null : k))} activeKey={waitBucket} />
+          <AgeBars items={r.waiting} yLabel="Jobs waiting" xLabel="Days since Created On"
+            onPick={(k) => setWaitBucket((v) => (v === k ? null : k))} activeKey={waitBucket} />
           <div style={{ fontSize: 11.5, color: T.textMuted, marginTop: 8 }}>Click a band to list its jobs.</div>
           {r.oldestWaiting && (
             <div style={{ marginTop: 14, padding: "8px 10px", borderRadius: 8, background: T.bgCardAlt, border: `1px solid ${T.border}`, fontSize: 11, color: T.textSecondary, lineHeight: 1.45 }}>
@@ -1064,13 +1118,13 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
               <FilterSelect value={custTop} onChange={setCustTop} options={[10, 15, 20].map((n) => ({ value: n, label: `Top ${n}` }))} width={90} />
             </div>}
             info={[
-              { label: "Bars", text: "One bar per customer (the job's Customer field), largest first. Pick what to rank by and how many to show. Cancelled jobs excluded." },
-              { label: "Date", text: "All Time by default; Month wise / Week wise step through calendar months or weeks with ← → and Today; Custom range picks an explicit From/To. Filters on the job's Created On, same as the treemap's filters." },
-              { label: "Jobs", formula: "Jobs = Completed + In Progress", text: "Click Completed or In progress above the bars to rank by only that; click it again for both." },
-              { label: "Visits (Worksheets)", formula: "Jobs with ≥ 1 worksheet + jobs without one", text: "Click With worksheet or Without worksheet to rank by only that." },
-              { label: "Visit Days", formula: "Σ (Visit End − Visit Start + 1) over the jobs' worksheets" },
-              { label: "Working Hours", formula: "Σ Total Working Hours (timesheets of their jobs)" },
-              { label: "Click for details", text: "Hover a bar for the customer's summary; click it to list their jobs." },
+              { label: "Bars", text: "One bar per customer, biggest first. Pick what to measure and how many customers to show. Cancelled jobs are not counted." },
+              { label: "Date", text: "Shows all time by default. Switch to Month or Week to step through one month/week at a time with ← → and Today, or pick your own date range. Based on when the job was created." },
+              { label: "Jobs", text: "The customer's total jobs: completed + still in progress. Click \"Completed\" or \"In progress\" above the chart to rank by just that one; click again to go back to both." },
+              { label: "Visits (Worksheets)", text: "How many of the customer's jobs have a worksheet filed vs. how many don't. Click \"With worksheet\" or \"Without worksheet\" to rank by just that." },
+              { label: "Visit Days", text: "Total number of days engineers spent visiting this customer, added up across all their worksheets." },
+              { label: "Working Hours", text: "Total hours logged on timesheets for this customer's jobs." },
+              { label: "Click for details", text: "Hover a bar for a quick summary of that customer; click it to see their full list of jobs." },
             ]}>
             <CustomerBars customers={custCustomers} metric={custMetric} part={custPart} onPart={setCustPart} top={custTop} activeKey={custPick} onPick={(k) => setCustPick((v) => (v === k ? null : k))} />
           </Panel>
@@ -1091,8 +1145,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
           maxHeight={420}
           emptyText="No jobs."
           toolbar={<TableHint text="Click a customer to see their jobs" info={[
-            { label: "Customer", text: "The job's Customer field; jobs without one are grouped as No customer. Cancelled jobs excluded." },
-            { label: "Sort", text: "Most jobs first; click any header to re-sort (e.g. by hours or Logged Worksheet)." },
+            { label: "Customer", text: "Who the job is for. Jobs with no customer listed are grouped under \"No customer\". Cancelled jobs are not counted." },
+            { label: "Sort", text: "Shows customers with the most jobs first. Click any column heading to sort by that instead, e.g. by hours or by worksheets logged." },
           ]} />}
         />
       </div>}

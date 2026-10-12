@@ -235,7 +235,8 @@ export function WorksheetsTab({ model, userMap }) {
           onClick={missingDates ? () => setBucket((v) => (v === "missing" ? null : "missing")) : null} active={bucket === "missing"} />
       </KpiRow>
 
-      <InsightsCard insights={insights} />
+      <InsightsCard insights={insights}
+        info="Up to 6 of the following, generated from the worksheets shown (follows the engineer filter): the service type behind the most visits; the % of visits with a problem recorded; the most recurring problem tag; the % of visits that used a spare part; visits lasting 15+ days; worksheets missing an Actual Visit Start/End Date. Click an insight to apply its filter below." />
 
       <ChartRow columns="minmax(0, 1.05fr) minmax(0, 0.95fr) minmax(0, 1fr) minmax(0, 1fr)">
         <Stack>

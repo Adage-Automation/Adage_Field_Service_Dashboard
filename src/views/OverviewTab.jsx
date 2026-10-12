@@ -351,7 +351,8 @@ export function OverviewTab({ model, userMap }) {
           sub={`${fmtNum(totalAssignments)} assignments · ${fmtNum(people.length ? totalAssignments / people.length : 0, 1)} jobs each`} />
       </KpiRow>
 
-      <InsightsCard insights={insights} />
+      <InsightsCard insights={insights}
+        info="Up to 6 of the following, generated from the jobs shown (follows the engineer filter), most relevant first: overall worksheet-logged %; completed jobs with no worksheet; the engineer with the most unlogged open jobs; engineers with 3+ jobs and zero worksheets filed; open jobs unlogged for 60+ days; records with mismatched paperwork (worksheet vs MoM/document); the engineer with the best logging rate; the region with the lowest logging rate. Click an insight to filter the records table or jump to the flagged list." />
 
       <ChartRow columns="minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr)">
         <Panel title="Monthly Trend · Jobs Created" info="Jobs per month (by Created On), split into with and without a worksheet. Click a month to filter the list; click again to clear.">
