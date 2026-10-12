@@ -157,6 +157,14 @@ const CUSTOMER_METRICS = [
   { value: "visitDays", label: "Visit Days", unit: "day" },
   { value: "hours", label: "Working Hours", unit: "h" },
 ];
+// Customer Insights date filter: which jobs (by Created On) feed the chart/table. Month/Week reuse the Gantt's
+// period-range day math; Custom uses an explicit From/To.
+const CUST_DATE_MODES = [
+  { value: "all", label: "All Time" },
+  { value: "month", label: "Month wise" },
+  { value: "week", label: "Week wise" },
+  { value: "custom", label: "Custom range" },
+];
 const fmtMetric = (v, unit) => (unit === "h" ? `${fmtNum(v, 0)} h` : plural(Math.round(v), unit));
 // Round the axis up to a 1 / 2 / 5 × 10ⁿ step so the gridlines land on readable numbers.
 const niceAxis = (max, ticks = 4) => {
@@ -430,7 +438,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
   const [tmView, setTmView] = useState("assigned");  // engineer grouping only: "assigned" (treemap) | "unassigned" (bench engineers)
   const [tmKey, setTmKey] = useState(null);         // clicked tile within the current grouping
   const [tmPeek, setTmPeek] = useState(null);       // tile under the mouse / keyboard focus (detail strip)
-  const [tmDrillKey, setTmDrillKey] = useState(null); // clicked row in the tile's breakdown (customer, if grouped by engineer; else engineer); "__ALL__" = all jobs, no breakdown filter
+  const [tmDrillKey, setTmDrillKey] = useState(null); // clicked tile in the nested breakdown treemap (customer, if grouped by engineer; else engineer); "__ALL__" = all jobs, no breakdown filter
+  const [tmDrillPeek, setTmDrillPeek] = useState(null); // breakdown tile under the mouse / keyboard focus
   const [fYear, setFYear] = useState([]);           // treemap filters (Created On year / month, customer, problem type)
   const [fMonth, setFMonth] = useState([]);
   const [fCustomer, setFCustomer] = useState([]);
@@ -449,6 +458,11 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
   const [custTop, setCustTop] = useState(10);
   const [custPart, setCustPart] = useState(null);       // legend item picked in the chart (e.g. "completed"); null = both
   const [custView, setCustView] = useState("bar");      // Customer Insights: "bar" graph or "grid" table
+  const [custDateMode, setCustDateMode] = useState("all"); // Customer Insights date filter: all | month | week | custom
+  const [custAnchor, setCustAnchor] = useState(() => new Date()); // reference date for month/week nav
+  const [custFrom, setCustFrom] = useState(() => dayNumToISO(ganttPeriodRange("month", new Date()).start));
+  const [custTo, setCustTo] = useState(() => dayNumToISO(ganttPeriodRange("month", new Date()).end));
+  const [custCustomRange, setCustCustomRange] = useState(() => ({ start: dayNumToISO(ganttPeriodRange("month", new Date()).start), end: dayNumToISO(ganttPeriodRange("month", new Date()).end) }));
   const [expandedAction, setExpandedAction] = useState(null); // Next Steps bullet whose job list is open
   const [actionEngineer, setActionEngineer] = useState(null);  // engineer picked inside the "never reported" action
 
@@ -547,7 +561,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
     .map(([k, jobs]) => tile(k, tmKeyLabel(k), jobs));
   const tmJobs = tmKey ? tmCases.filter((c) => tmGroupKeys(c).includes(tmKey)) : [];
   const tmSelectedLabel = tmItems.find((t) => t.key === tmKey)?.label;
-  const tmSelect = (key) => { setTmDrillKey(null); setTmKey((v) => (v === key ? null : key)); };
+  const tmSelect = (key) => { setTmDrillKey(null); setTmDrillPeek(null); setTmKey((v) => (v === key ? null : key)); };
   // Clicking a tile drills into a breakdown by the *other* dimension, not straight to a job list:
   // engineer tile → which customers they serve; customer or region tile → which engineers are in it.
   const drillBy = tmGroupBy === "engineer" ? "customer" : "engineer";
@@ -558,12 +572,6 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
   const drillItems = tmKey ? Object.entries(tmJobs.reduce((m, c) => (drillGroupKeys(c).forEach((k) => (m[k] = m[k] || []).push(c)), m), {}))
     .map(([k, jobs]) => tile(k, drillKeyLabel(k), jobs)) : [];
   const tmDrillJobs = tmDrillKey === "__ALL__" ? tmJobs : tmDrillKey ? tmJobs.filter((c) => drillGroupKeys(c).includes(tmDrillKey)) : [];
-  const drillColumns = [
-    { key: "name", label: drillLabel, weight: 32, render: (d) => <TitleCell title={d.label} />, sortValue: (d) => d.label },
-    { key: "jobs", label: "Jobs", weight: 10, render: (d) => <span className="col-value">{d.value}</span>, sortValue: (d) => d.value },
-    { key: "completed", label: "Completed", weight: 14, render: (d) => <HeatPct value={d.rate}>{d.completed}/{d.value}</HeatPct>, sortValue: (d) => d.rate },
-    { key: "hint", label: "Details", weight: 28, render: (d) => <Txt style={{ color: T.textMuted }}>{d.hint}</Txt>, sortValue: () => 0 },
-  ];
   const tmGroupLabel = GROUP_OPTIONS.find((o) => o.value === tmGroupBy).label;
   const tmGroupPlural = tmGroupBy === "region" ? "regions" : tmGroupBy === "customer" ? "customers" : "engineers";
   // Roster employees (reporting to the Service Manager) with zero live, non-cancelled jobs — never appear in r.engineers.
@@ -698,8 +706,6 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         { label: "Whose timesheets", text: "The timesheet's Submitted By, else the job's Service Engineers. Blank when the engineer has none." },
       ],
       render: (e) => dayCell(e.totalHours), sortValue: (e) => e.totalHours ?? -1, exportValue: (e) => (e.totalHours === null ? "" : Number(e.totalHours.toFixed(1))) },
-    { key: "problems", label: "Problems Identified", weight: 9, info: [{ label: "Problems Identified", formula: "Visits with ≥ 1 problem tag, of all Visits", text: "Shown as “N of Visits”. Colour: red (none) → green (all)." }],
-      render: (e) => <HeatPct value={e.problemRate}>{e.withProblems} of {e.visits}</HeatPct>, sortValue: (e) => e.withProblems, exportValue: (e) => e.withProblems },
     { key: "spares", label: "Spare Parts Used", weight: 16, exportWidth: 50, info: [{ label: "Spare Parts Used", formula: "Distinct parts across the engineer's worksheets", text: "Each part listed once; sorting uses how many different parts." }],
       render: (e) => <TagList items={e.spareParts} color="#7C3AED" />, sortValue: (e) => e.spareParts.length, exportValue: (e) => e.spareParts.join(", ") },
     { key: "type", label: "Main Service Type", weight: 11, exportWidth: 20, info: [{ label: "Main Service Type", formula: "Most frequent Service Type on their worksheets", text: "Shows what kind of work the engineer mostly does." }],
@@ -851,30 +857,36 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
 
       {/* ── Engineer's dashboard: treemap, ranking & visit analysis ── */}
       <SectionLabel>Engineer's Dashboard</SectionLabel>
-      <Panel grow={false} style={{ marginBottom: 10 }} title={tmGroupBy === "engineer" && tmView === "unassigned" ? "Unassigned Engineers" : `${tmGroupLabel} · completed vs assigned`}
+      <Panel grow={false} style={{ marginBottom: 10 }}
+        title={tmGroupBy === "engineer" && tmView === "unassigned" ? "Unassigned Engineers"
+          : tmKey ? `${tmSelectedLabel} · ${drillBy === "customer" ? "customers served" : "engineers assigned"}`
+          : `${tmGroupLabel} · completed vs assigned`}
         info={[
           { label: "Box size", formula: "Size = number of jobs (cancelled jobs excluded)", text: "Tiles group jobs by the picked dimension — Service Engineer, Customer or Region. A job with two engineers counts for each when grouped by engineer." },
           { label: "Box colour & pointer", formula: "Completion % = Completed jobs / All jobs × 100", text: "Red at 0% → amber → green at 100%. Completed = stage name contains Completed or Done." },
           { label: "Box details", formula: "Hours = Σ Total Working Hours on the tile's jobs", text: "Worksheets = jobs with at least one worksheet." },
-          { label: "Navigate", text: "Click a tile to drill in: grouped by engineer, you see the customers they serve; grouped by customer or region, you see the engineers involved. Click a breakdown row (or \"View all jobs\") to list the actual jobs. Click the tile again to go back to all. Switch the grouping with the dropdown. Year / Month / Customer / Problem Type filters apply to the treemap only." },
+          { label: "Navigate", text: "Click a tile to drill in — the same box swaps to the other dimension's tiles (an engineer tile shows the customers they serve; a customer or region tile shows the engineers involved). Click one of those tiles, or \"View all jobs\", to list the actual jobs below. Click the breadcrumb name above the box to go back up a level. Switch the grouping with the dropdown. Year / Month / Customer / Problem Type filters apply to the treemap only." },
           { label: "Unassigned Engineers", text: "Roster employees reporting to the Service Manager with zero live jobs (cancelled excluded). No completion rate or hours to show yet, so their tiles are plain and grey." },
         ]}>
         <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-          <FilterSelect value={tmGroupBy} onChange={(v) => { setTmGroupBy(v); setTmKey(null); setTmPeek(null); setTmView("assigned"); setTmDrillKey(null); }} options={GROUP_OPTIONS} prefix="Group by: " width={200} />
+          <FilterSelect value={tmGroupBy} onChange={(v) => { setTmGroupBy(v); setTmKey(null); setTmPeek(null); setTmView("assigned"); setTmDrillKey(null); setTmDrillPeek(null); }} options={GROUP_OPTIONS} prefix="Group by: " width={200} />
           <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: T.textMuted, padding: "6px 10px", borderRadius: 8, background: T.bgInput }}>
             {tmGroupBy === "engineer" ? (
               <>
-                {viewTab("All Engineers", tmView === "assigned", () => { setTmView("assigned"); setTmKey(null); setTmDrillKey(null); })}
-                {viewTab(`Unassigned Engineers${unassignedEngineers.length ? ` (${unassignedEngineers.length})` : ""}`, tmView === "unassigned", () => { setTmView("unassigned"); setTmKey(null); setTmDrillKey(null); })}
-                {tmView === "assigned" && tmSelectedLabel && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{tmSelectedLabel}</span></>}
+                {viewTab("All Engineers", tmView === "assigned", () => { setTmView("assigned"); setTmKey(null); setTmDrillKey(null); setTmDrillPeek(null); })}
+                {viewTab(`Unassigned Engineers${unassignedEngineers.length ? ` (${unassignedEngineers.length})` : ""}`, tmView === "unassigned", () => { setTmView("unassigned"); setTmKey(null); setTmDrillKey(null); setTmDrillPeek(null); })}
+                {tmView === "assigned" && tmSelectedLabel && <>›{crumb(tmSelectedLabel, () => { setTmKey(null); setTmDrillKey(null); setTmDrillPeek(null); })}</>}
               </>
             ) : (
               <>
-                {crumb(`All ${tmGroupPlural}`, () => { setTmKey(null); setTmDrillKey(null); })}
-                {tmSelectedLabel && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{tmSelectedLabel}</span></>}
+                {crumb(`All ${tmGroupPlural}`, () => { setTmKey(null); setTmDrillKey(null); setTmDrillPeek(null); })}
+                {tmSelectedLabel && <>›{crumb(tmSelectedLabel, () => { setTmKey(null); setTmDrillKey(null); setTmDrillPeek(null); })}</>}
               </>
             )}
+            {tmKey && tmDrillKey && tmDrillKey !== "__ALL__" && <>›<span style={{ color: T.textPrimary, fontWeight: 600 }}>{drillKeyLabel(tmDrillKey)}</span></>}
           </div>
+          {tmKey && drillItems.length > 0 &&
+            viewTab(`View all ${plural(tmJobs.length, "job")}`, tmDrillKey === "__ALL__", () => setTmDrillKey((v) => (v === "__ALL__" ? null : "__ALL__")))}
         </div>
         {tmView === "unassigned" ? (
           <div aria-live="polite" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: 12, color: T.textSecondary }}>
@@ -889,15 +901,17 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
             </span>
           </div>
         ) : (() => {
-          const shown = tmPeek || tmItems.find((t) => t.key === tmKey);
+          // At the drilled-in level the pointer tracks the breakdown tiles; at the top level it tracks the main tiles.
+          const shown = tmKey ? (tmDrillPeek || drillItems.find((t) => t.key === tmDrillKey)) : tmPeek;
           const levelJobs = tmItems.reduce((sum, t) => sum + t.value, 0);
           const levelDone = tmItems.reduce((sum, t) => sum + t.completed, 0);
           // Aggregate ("All X") point: engineer grouping shows roster utilization, not a jobs tally — a job with
           // two engineers is counted once per engineer tile, so summing tiles double-counts it (inflates cases/rate).
           const point = shown ? shown
+            : tmKey ? tmItems.find((t) => t.key === tmKey)
             : tmGroupBy === "engineer" ? { label: `All ${tmGroupPlural}`, rate: pct(r.engineers.length, serviceEngineerCount) }
             : { label: `All ${tmGroupPlural}`, rate: pct(levelDone, levelJobs), completed: levelDone, value: levelJobs };
-          const meterCaption = !shown && tmGroupBy === "engineer" ? "assigned" : "completed";
+          const meterCaption = !shown && !tmKey && tmGroupBy === "engineer" ? "assigned" : "completed";
           return (
             <div aria-live="polite" style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 10, fontSize: 12, color: T.textSecondary }}>
               <div style={{ width: 260, flexShrink: 0 }}>
@@ -914,7 +928,8 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
                 </div>
               </div>
               <span style={{ flex: 1, minWidth: 240, padding: "6px 10px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard }}>
-                {shown ? <><strong style={{ color: T.textPrimary }}>{shown.label}</strong>: {shown.completed} of {shown.value} completed ({shown.rate}%) · {shown.hint}{!tmPeek && tmKey ? " · Click this tile again to go back to all." : ""}</>
+                {shown ? <><strong style={{ color: T.textPrimary }}>{shown.label}</strong>: {shown.completed} of {shown.value} completed ({shown.rate}%) · {shown.hint}{tmKey && tmDrillKey && !tmDrillPeek ? " · Click this tile again to clear the selection." : ""}</>
+                  : tmKey ? <><strong style={{ color: T.textPrimary }}>{tmSelectedLabel}</strong>: {point.completed} of {point.value} completed ({point.rate}%) · {point.hint} · Hover or tab to a {drillLabel.toLowerCase()} tile to see their jobs, or click one to list them below.</>
                   : tmGroupBy === "engineer" ? <><strong style={{ color: T.textPrimary }}>All {tmGroupPlural}</strong>: {r.engineers.length} of {serviceEngineerCount} service engineers are assigned. Hover or tab to a tile to move the pointer; click or press Enter to see who they serve.</>
                   : <><strong style={{ color: T.textPrimary }}>All {tmGroupPlural}</strong>: {plural(tmItems.length, tmGroupBy === "customer" ? "customer" : "region")} shown. Hover or tab to a tile to move the pointer; click or press Enter to see who's assigned.</>}
               </span>
@@ -924,35 +939,10 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         {tmView === "assigned" && <FilterBar count={tmCases.length} noun="job" filters={Object.values(jobFilters([fYear, setFYear], [fMonth, setFMonth], [fCustomer, setFCustomer], [fProblem, setFProblem]))} />}
         {tmView === "unassigned"
           ? <UnassignedGrid engineers={unassignedEngineers} />
-          : (tmItems.length ? <Treemap items={tmItems} selectedKey={tmKey} onSelect={(k) => { setTmPeek(null); tmSelect(k); }} onPeek={setTmPeek} /> : empty("No jobs match these filters"))}
+          : tmKey
+          ? (drillItems.length ? <Treemap items={drillItems} selectedKey={tmDrillKey} onSelect={(k) => { setTmDrillPeek(null); setTmDrillKey((v) => (v === k ? null : k)); }} onPeek={setTmDrillPeek} /> : empty(`No jobs for ${tmSelectedLabel}`))
+          : (tmItems.length ? <Treemap items={tmItems} selectedKey={null} onSelect={(k) => { setTmPeek(null); tmSelect(k); }} onPeek={setTmPeek} /> : empty("No jobs match these filters"))}
       </Panel>
-      {tmKey && (drillItems.length > 0 ? (
-        <div style={{ marginBottom: 10 }}>
-          <DataTable
-            title={`${tmSelectedLabel} · ${drillBy === "customer" ? "customers served" : "engineers assigned"}`}
-            columns={drillColumns}
-            rows={drillItems}
-            rowKey={(d) => d.key}
-            storageKey={`adage_fsm_report_treemap_drill_${drillBy}_cols_v1`}
-            searchText={(d) => d.label}
-            searchPlaceholder={`Search ${drillLabel.toLowerCase()}...`}
-            onRowClick={(d) => setTmDrillKey((v) => (v === d.key ? null : d.key))}
-            rowStyle={(d) => (d.key === tmDrillKey ? { background: T.accentBg } : null)}
-            exportName={`field-service-${tmGroupBy}-${tmSelectedLabel}-${drillBy}-breakdown`}
-            maxHeight={320}
-            toolbar={<>
-              <TableHint text={`Click a ${drillLabel.toLowerCase()} to see their jobs`} info={[
-                { label: drillLabel, formula: drillBy === "customer" ? "Grouped by the job's Customer field" : "Grouped by the job's Service Engineers", text: `Jobs, Completed and the hours/worksheets hint are within ${tmSelectedLabel}'s ${plural(tmJobs.length, "job")} only.` },
-              ]} />
-              <button className="no-print" onClick={() => setTmDrillKey((v) => (v === "__ALL__" ? null : "__ALL__"))}
-                style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: tmDrillKey === "__ALL__" ? T.accentBg : T.bgCard, color: tmDrillKey === "__ALL__" ? T.accent : T.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>
-                View all {plural(tmJobs.length, "job")}
-              </button>
-              <button className="no-print" onClick={() => { setTmKey(null); setTmDrillKey(null); }} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer" }}>✕ Close</button>
-            </>}
-          />
-        </div>
-      ) : empty(`No jobs for ${tmSelectedLabel}`))}
       {tmDrillKey && jobsTable(
         `${tmSelectedLabel} · ${tmDrillKey === "__ALL__" ? "all jobs" : drillKeyLabel(tmDrillKey)} · ${plural(tmDrillJobs.length, "job")} (${tmDrillJobs.filter(isCompleted).length} completed)`,
         tmDrillJobs, `field-service-jobs-${tmGroupBy}-${tmSelectedLabel}-${tmDrillKey}`, () => setTmDrillKey(null), "adage_fsm_report_engineer_jobs_cols_v2",
@@ -1024,7 +1014,42 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
       })()}
 
       {/* ── Customer insights ── */}
+      {(() => {
+        // Date filter (Created On): All Time (default), or Month/Week around custAnchor, or an explicit custom range.
+        const custRange = custDateMode === "all" ? null
+          : custDateMode === "custom" ? { start: dayNum(custCustomRange.start), end: dayNum(custCustomRange.end) }
+          : ganttPeriodRange(custDateMode, custAnchor);
+        const custLive = custRange ? r.live.filter((c) => { const d = dayNum(c.createdISO); return d !== null && d >= custRange.start && d <= custRange.end; }) : r.live;
+        const custCustomers = custRange ? customerStats(custLive) : r.customers;
+        const custRangeLabel = custRange ? `${fmtDay(dayNumToISO(custRange.start))} – ${fmtDay(dayNumToISO(custRange.end))}` : null;
+        const custApplyRange = () => { if (custFrom && custTo && custFrom <= custTo) setCustCustomRange({ start: custFrom, end: custTo }); };
+        return (<>
       <SectionLabel right={<ViewSwitch value={custView} onChange={setCustView} options={[{ value: "bar", label: "Bar Graph" }, { value: "grid", label: "Grid" }]} />}>Customer Insights</SectionLabel>
+      <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+        <FilterSelect value={custDateMode} onChange={(v) => setCustDateMode(v)} options={CUST_DATE_MODES} prefix="Date: " width={170} />
+        {(custDateMode === "month" || custDateMode === "week") && (
+          <div style={{ display: "flex", gap: 4 }}>
+            <button type="button" onClick={() => setCustAnchor((a) => ganttShiftAnchor(a, custDateMode, -1))} aria-label="Customer Insights: previous period"
+              style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, cursor: "pointer", fontFamily: "inherit" }}>←</button>
+            <button type="button" onClick={() => setCustAnchor((a) => ganttShiftAnchor(a, custDateMode, 1))} aria-label="Customer Insights: next period"
+              style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, cursor: "pointer", fontFamily: "inherit" }}>→</button>
+            <button type="button" onClick={() => setCustAnchor(new Date())}
+              style={{ padding: "0 10px", height: 28, borderRadius: 6, border: `1px solid ${T.border}`, background: T.bgCard, color: T.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Today</button>
+          </div>
+        )}
+        {custDateMode === "custom" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="date" value={custFrom} onChange={(e) => setCustFrom(e.target.value)} aria-label="Customer Insights: range start"
+              style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12, fontFamily: "inherit", color: T.textPrimary, background: T.bgCard }} />
+            <span style={{ color: T.textMuted, fontSize: 12 }}>→</span>
+            <input type="date" value={custTo} onChange={(e) => setCustTo(e.target.value)} aria-label="Customer Insights: range end"
+              style={{ padding: "4px 8px", borderRadius: 6, border: `1px solid ${T.border}`, fontSize: 12, fontFamily: "inherit", color: T.textPrimary, background: T.bgCard }} />
+            <button type="button" onClick={custApplyRange}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: T.accent, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Apply</button>
+          </div>
+        )}
+        {custRangeLabel && <span style={{ fontSize: 11.5, color: T.textMuted }}>{custRangeLabel} · {plural(custLive.length, "job")}</span>}
+      </div>
       {custView === "bar" && (() => {
         const m = CUSTOMER_METRICS.find((x) => x.value === custMetric);
         const partLabel = m.parts?.find((p) => p.key === custPart)?.label;
@@ -1036,13 +1061,14 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
             </div>}
             info={[
               { label: "Bars", text: "One bar per customer (the job's Customer field), largest first. Pick what to rank by and how many to show. Cancelled jobs excluded." },
+              { label: "Date", text: "All Time by default; Month wise / Week wise step through calendar months or weeks with ← → and Today; Custom range picks an explicit From/To. Filters on the job's Created On, same as the treemap's filters." },
               { label: "Jobs", formula: "Jobs = Completed + In Progress", text: "Click Completed or In progress above the bars to rank by only that; click it again for both." },
               { label: "Visits (Worksheets)", formula: "Jobs with ≥ 1 worksheet + jobs without one", text: "Click With worksheet or Without worksheet to rank by only that." },
               { label: "Visit Days", formula: "Σ (Visit End − Visit Start + 1) over the jobs' worksheets" },
               { label: "Working Hours", formula: "Σ Total Working Hours (timesheets of their jobs)" },
               { label: "Click for details", text: "Hover a bar for the customer's summary; click it to list their jobs." },
             ]}>
-            <CustomerBars customers={r.customers} metric={custMetric} part={custPart} onPart={setCustPart} top={custTop} activeKey={custPick} onPick={(k) => setCustPick((v) => (v === k ? null : k))} />
+            <CustomerBars customers={custCustomers} metric={custMetric} part={custPart} onPart={setCustPart} top={custTop} activeKey={custPick} onPick={(k) => setCustPick((v) => (v === k ? null : k))} />
           </Panel>
         );
       })()}
@@ -1050,7 +1076,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         <DataTable
           title="Customer Insights"
           columns={customerColumns}
-          rows={r.customers}
+          rows={custCustomers}
           storageKey="adage_fsm_report_customers_cols_v2"
           defaultSort={{ key: "jobs", dir: "desc" }}
           searchText={(c) => [c.name, c.topProblem, ...c.regions].join(" ")}
@@ -1067,9 +1093,11 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
         />
       </div>}
       {custPick && (() => {
-        const rows = r.live.filter((c) => (caseCustomer(c) || "No customer") === custPick);
+        const rows = custLive.filter((c) => (caseCustomer(c) || "No customer") === custPick);
         const done = rows.filter(isCompleted).length;
         return jobsTable(`${custPick} · ${plural(rows.length, "job")} (${done} completed, ${rows.length - done} open)`, rows, `field-service-customer-${custPick}`, () => setCustPick(null), "adage_fsm_report_engineer_jobs_cols_v2");
+      })()}
+      </>);
       })()}
 
       {/* ── Visit analysis ── */}
@@ -1078,7 +1106,7 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
           title="Visit Analysis by Engineer · most visit days first"
           columns={visitEngineerColumns}
           rows={visitByEngineer}
-          storageKey="adage_fsm_report_visit_by_engineer_cols_v3"
+          storageKey="adage_fsm_report_visit_by_engineer_cols_v4"
           defaultSort={{ key: "days", dir: "desc" }}
           searchText={(e) => e.name}
           searchPlaceholder="Search engineer..."
@@ -1090,7 +1118,6 @@ export function ReportTab({ model, userMap, serviceEngineerCount, serviceEnginee
           toolbar={<TableHint text="Click an engineer to see their jobs" info={[
             { label: "Total Days", formula: "Total Days = Σ (Visit End − Visit Start + 1)", text: "Per worksheet, both days counted. Visits missing a date are left out of the total." },
             { label: "Total Working Hours", formula: "Total Hours = Σ Total Working Hours", text: "From the engineer's own timesheets (Submitted By, else the job's Service Engineers)." },
-            { label: "Problems Identified", formula: "Visits with ≥ 1 problem tag, of all Visits", text: "Red when none of their visits record a problem, green when all do." },
             { label: "Who a visit counts for", text: "The worksheet's Assigned Service Engineer, else the job's Service Engineers. Sorted most total visit days first; click a header to re-sort." },
           ]} />}
         />

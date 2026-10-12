@@ -3,6 +3,38 @@
 All notable changes to the ADAGE Field Service Dashboard. Newest first. Add an entry for every change,
 noting what changed, why, and how it was verified.
 
+## 2026-10-12 — Customer Insights: date filter (All Time / Month / Week / Custom range)
+
+- Report tab's Customer Insights section (both the bar chart and the Grid table, which now read the same
+  date-filtered data) gets a date filter on the job's Created On: **All Time** (default, unfiltered) · **Month
+  wise** / **Week wise** with ← / → / Today navigation around an anchor date · **Custom range** with From/To +
+  Apply. Reuses the Gantt toolbar's existing `ganttPeriodRange`/`ganttShiftAnchor` day-math instead of
+  duplicating it. The active range and its job count are printed next to the controls; clicking a customer's bar
+  or row still lists their jobs, now scoped to the filtered range too. Fixed an aria-label collision caught while
+  testing: the new ←/→/Today buttons and From/To inputs initially reused the Gantt toolbar's exact aria-labels
+  ("Previous period", "Range start", etc.), which would have broken screen-reader navigation between the two
+  toolbars; renamed to "Customer Insights: …". Verified live with Playwright across all four modes (Month → Next
+  → October, Custom range Aug–Oct → 47 jobs), no console errors.
+
+## 2026-10-12 — Treemap drill-down happens in the same box, not a second panel
+
+- Report tab's Engineer's Dashboard treemap: clicking a tile no longer opens a separate `DataTable` list, and no
+  longer opens a second treemap in a panel below. **The one treemap box now swaps its own tiles in place**:
+  grouped by engineer, clicking an engineer tile replaces the tiles with that engineer's customers; grouped by
+  customer or region, clicking replaces them with the engineers involved (same `tile()` shape and hover meter,
+  reused for both levels). The breadcrumb above the box grows a clickable segment for the drilled-in name —
+  click it to swap back to the top-level tiles. Clicking a breakdown tile (or "View all N jobs") still lists the
+  actual jobs below, unchanged. A new `tmDrillPeek` state drives the drilled-in level's hover meter, reset
+  wherever `tmDrillKey` already was. Removed the now-unused `drillColumns` / breakdown `DataTable`. Verified live
+  with Playwright: tile count goes from 48 (top level) to 6 (drilled into one engineer) and back to 48 on
+  breadcrumb click, both grouping directions (engineer → customers, customer → engineers), no console errors.
+
+## 2026-10-12 — Visit Analysis by Engineer: removed "Problems Identified" column
+
+- Report tab's **Visit Analysis by Engineer** table no longer shows the Problems Identified column (visits with
+  ≥ 1 problem tag). Still available in **Problems & Resolutions** below it and in the per-worksheet records table.
+  Bumped `storageKey` to `..._cols_v4` since the visible column count changed. Verified with `npm run build`.
+
 ## 2026-10-09 — Manager View: KPI labels "Jobs In Progress" / "Jobs Completed"
 
 - Report tab top KPI row: **In Progress** → **Jobs In Progress**, **Completed** → **Jobs Completed**. Verified with
